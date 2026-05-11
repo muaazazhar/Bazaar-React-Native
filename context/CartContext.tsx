@@ -1,33 +1,73 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useContext,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 
-import { createOrderApi } from '@/services/storeApi';
-import type { Product } from '@/types/domain';
+import type { Product } from "@/types/domain";
+
+type CartItem = {
+  product: Product;
+  quantity: number;
+};
 
 type CartContextType = {
-  cart: Product[];
+  cart: CartItem[];
   addToCart: (product: Product) => void;
-  removeFromCart: (productId: string) => void;
+  removeFromCart: (productId: string | number) => void;
+  increaseQuantity: (productId: string | number) => void;
+  decreaseQuantity: (productId: string | number) => void;
   clearCart: () => void;
-  placeOrder: (address: string) => Promise<void>;
   total: number;
 };
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
 export function CartProvider({ children }: { children: ReactNode }) {
-  const [cart, setCart] = useState<Product[]>([]);
+  const [cart, setCart] = useState<CartItem[]>([]);
 
   const addToCart = (product: Product) => {
-    setCart((prev) => [...prev, product]);
+    setCart((prev) => {
+      const idx = prev.findIndex((item) => item.product.id === product.id);
+      if (idx !== -1) {
+        // If product exists, increase quantity
+        const updated = [...prev];
+        updated[idx] = { ...updated[idx], quantity: updated[idx].quantity + 1 };
+        return updated;
+      }
+      // Else add new
+      return [...prev, { product, quantity: 1 }];
+    });
   };
 
-  const removeFromCart = (productId: string) => {
+  const removeFromCart = (productId: string | number) => {
+    setCart((prev) => prev.filter((item) => item.product.id !== productId));
+  };
+
+  const increaseQuantity = (productId: string | number) => {
     setCart((prev) => {
-      const idx = prev.findIndex((item) => item.id === productId);
-      if (idx === -1) {
-        return prev;
+      const idx = prev.findIndex((item) => item.product.id === productId);
+      if (idx === -1) return prev;
+      const updated = [...prev];
+      updated[idx] = { ...updated[idx], quantity: updated[idx].quantity + 1 };
+      return updated;
+    });
+  };
+
+  const decreaseQuantity = (productId: string | number) => {
+    setCart((prev) => {
+      const idx = prev.findIndex((item) => item.product.id === productId);
+      if (idx === -1) return prev;
+      const updated = [...prev];
+      if (updated[idx].quantity > 1) {
+        updated[idx] = { ...updated[idx], quantity: updated[idx].quantity - 1 };
+        return updated;
+      } else {
+        // Remove item if quantity goes to 0
+        return updated.filter((item, i) => i !== idx);
       }
-      return [...prev.slice(0, idx), ...prev.slice(idx + 1)];
     });
   };
 
@@ -35,28 +75,31 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setCart([]);
   };
 
-  const placeOrder = async (address: string) => {
-    await createOrderApi({
-      items: cart.map((item) => ({
-        productId: item.id,
-        quantity: 1,
-      })),
-      address,
-    });
-  };
-
-  const total = useMemo(() => cart.reduce((sum, item) => sum + item.price, 0), [cart]);
+  const total = useMemo(
+    () =>
+      cart.reduce(
+        (sum, item) =>
+          sum +
+          (typeof item.product.price === "string"
+            ? Number(item.product.price)
+            : item.product.price) *
+            item.quantity,
+        0,
+      ),
+    [cart],
+  );
 
   const value = useMemo(
     () => ({
       cart,
       addToCart,
       removeFromCart,
+      increaseQuantity,
+      decreaseQuantity,
       clearCart,
-      placeOrder,
       total,
     }),
-    [cart, total]
+    [cart, total],
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
@@ -65,7 +108,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 export function useCart() {
   const context = useContext(CartContext);
   if (!context) {
-    throw new Error('useCart must be used within a CartProvider');
+    throw new Error("useCart must be used within a CartProvider");
   }
   return context;
 }

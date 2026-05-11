@@ -1,9 +1,9 @@
 import { Redirect } from 'expo-router';
 
-import OrdersScreen from '@/screens/OrdersScreen';
+import AdminProductsScreen from '@/screens/AdminProductsScreen';
 import { useAppSelector } from '@/store/hooks';
 
-export default function OrdersRoute() {
+export default function AdminProductsRoute() {
   const user = useAppSelector((state) => state.auth.user);
   const hydrated = useAppSelector((state) => state.auth.hydrated);
 
@@ -15,9 +15,9 @@ export default function OrdersRoute() {
     return <Redirect href="/login" />;
   }
 
-  if (user.role === 'admin') {
-    return <Redirect href="/admin" />;
+  if (user.role !== 'admin') {
+    return <Redirect href="/(tabs)" />;
   }
 
-  return <OrdersScreen />;
+  return <AdminProductsScreen />;
 }

@@ -1,9 +1,14 @@
 import { Redirect } from 'expo-router';
 
-import { useAuth } from '@/context/AuthContext';
+import { useAppSelector } from '@/store/hooks';
 
 export default function RootIndex() {
-  const { user } = useAuth();
+  const user = useAppSelector((state) => state.auth.user);
+  const hydrated = useAppSelector((state) => state.auth.hydrated);
+
+  if (!hydrated) {
+    return null;
+  }
 
   if (!user) {
     return <Redirect href="/login" />;

@@ -1,104 +1,165 @@
-import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
+import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ScreenHeader } from '@/components/screen-header';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { useAuth } from '@/context/AuthContext';
 import { useCart } from '@/context/CartContext';
-import { getProductsApi } from '@/services/storeApi';
-import type { Product } from '@/types/domain';
+import { useThemeColor } from '@/hooks/use-theme-color';
+import { useGetCategoriesQuery, useGetProductsQuery } from '@/store/api/catalogApi';
 
 export default function HomeScreen() {
-  const { user, logout } = useAuth();
-  const { addToCart } = useCart();
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const { cart, addToCart, increaseQuantity, decreaseQuantity } = useCart();
+  const { data: products = [], isLoading, isFetching, refetch } = useGetProductsQuery();
+  const { data: categories = [] } = useGetCategoriesQuery();
 
-  const loadProducts = useCallback(async () => {
-    setError('');
-    setLoading(true);
-    try {
-      const data = await getProductsApi();
-      setProducts(data);
-    } catch {
-      setError('Could not load products.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadProducts();
-  }, [loadProducts]);
+  const borderColor = useThemeColor({}, 'border');
+  const surface = useThemeColor({}, 'surface');
+  const primary = useThemeColor({}, 'primary');
+  const primaryText = useThemeColor({}, 'primaryText');
+  const muted = useThemeColor({}, 'muted');
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <ThemedText type="title">Home</ThemedText>
-      <ThemedText>Welcome, {user?.email}</ThemedText>
-      <Pressable style={styles.secondaryButton} onPress={loadProducts}>
-        <ThemedText>Refresh Products</ThemedText>
-      </Pressable>
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+        <ScreenHeader title="Bazaar" showBack={false} />
 
-      {loading ? <ActivityIndicator /> : null}
-      {!!error ? <ThemedText style={styles.error}>{error}</ThemedText> : null}
-
-      {products.map((product) => (
-        <ThemedView key={product.id} style={styles.productCard}>
-          <ThemedText type="defaultSemiBold">{product.name}</ThemedText>
-          <ThemedText>Rs {product.price}</ThemedText>
-          <ThemedText>Category: {product.category?.name ?? 'Uncategorized'}</ThemedText>
-          <Pressable style={styles.button} onPress={() => addToCart(product)}>
-            <ThemedText style={styles.buttonText}>Add to Cart</ThemedText>
-          </Pressable>
+        <ThemedView style={[styles.bannerCard, { borderColor, backgroundColor: surface }]}>
+          <ThemedText type="defaultSemiBold">Smarter grocery shopping</ThemedText>
+          <ThemedText style={{ color: muted }}>Fast delivery, easy cart, and practical checkout.</ThemedText>
         </ThemedView>
-      ))}
 
-      <Pressable style={styles.secondaryButton} onPress={() => router.push('/(tabs)/cart')}>
-        <ThemedText>Go to Cart</ThemedText>
-      </Pressable>
-      <Pressable style={styles.secondaryButton} onPress={() => router.push('/(tabs)/orders')}>
-        <ThemedText>My Orders</ThemedText>
-      </Pressable>
-      <Pressable style={styles.secondaryButton} onPress={logout}>
-        <ThemedText>Logout</ThemedText>
-      </Pressable>
-    </ScrollView>
+        <View style={styles.sectionRow}>
+          <ThemedText type="subtitle">Categories</ThemedText>
+          <Pressable onPress={refetch}>
+            <ThemedText type="link">{isFetching ? 'Refreshing...' : 'Refresh'}</ThemedText>
+          </Pressable>
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoriesRow}>
+          {categories.map((category) => (
+            <ThemedView key={category.id} style={[styles.categoryCard, { borderColor, backgroundColor: surface }]}>
+              {category.imageUrl ? <Image source={{ uri: category.imageUrl }} style={styles.categoryImage} /> : null}
+              <ThemedText style={styles.categoryName}>{category.name}</ThemedText>
+            </ThemedView>
+          ))}
+        </ScrollView>
+
+        <ThemedText type="subtitle">Popular products</ThemedText>
+        {isLoading ? <ActivityIndicator /> : null}
+        {products.map((product) => {
+          const cartItem = cart.find((item) => item.product.id === product.id);
+          return (
+            <ThemedView key={String(product.id)} style={[styles.productCard, { borderColor, backgroundColor: surface }]}>
+              <View style={styles.productRow}>
+                {product.imageUrl ? <Image source={{ uri: product.imageUrl }} style={styles.productImage} /> : null}
+                <View style={styles.productInfo}>
+                  <ThemedText type="defaultSemiBold">{product.name}</ThemedText>
+                  <ThemedText>Rs {product.price}</ThemedText>
+                  <ThemedText style={{ color: muted }}>{product.category?.name ?? 'General'}</ThemedText>
+                </View>
+              </View>
+              {cartItem ? (
+                <View style={styles.qtyRow}>
+                  <Pressable style={[styles.qtyButton, { borderColor }]} onPress={() => decreaseQuantity(product.id)}>
+                    <ThemedText>-</ThemedText>
+                  </Pressable>
+                  <ThemedText>{cartItem.quantity}</ThemedText>
+                  <Pressable style={[styles.qtyButton, { borderColor }]} onPress={() => increaseQuantity(product.id)}>
+                    <ThemedText>+</ThemedText>
+                  </Pressable>
+                </View>
+              ) : (
+                <Pressable style={[styles.primaryButton, { backgroundColor: primary }]} onPress={() => addToCart(product)}>
+                  <ThemedText style={[styles.primaryButtonText, { color: primaryText }]}>Add to cart</ThemedText>
+                </Pressable>
+              )}
+            </ThemedView>
+          );
+        })}
+
+        <Pressable style={[styles.primaryButton, { backgroundColor: primary }]} onPress={() => router.push('/(tabs)/cart')}>
+          <ThemedText style={[styles.primaryButtonText, { color: primaryText }]}>Go to cart</ThemedText>
+        </Pressable>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeArea: { flex: 1 },
   container: {
-    flex: 1,
+    flexGrow: 1,
     padding: 16,
     gap: 12,
   },
+  bannerCard: {
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 14,
+    gap: 6,
+  },
+  sectionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  categoriesRow: {
+    gap: 10,
+    paddingRight: 10,
+  },
+  categoryCard: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 8,
+    width: 108,
+    gap: 6,
+  },
+  categoryImage: {
+    width: 92,
+    height: 72,
+    borderRadius: 8,
+  },
+  categoryName: {
+    fontSize: 13,
+    lineHeight: 16,
+  },
   productCard: {
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderRadius: 12,
+    padding: 10,
+    gap: 10,
+  },
+  productRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  productImage: {
+    width: 74,
+    height: 74,
+    borderRadius: 10,
+  },
+  productInfo: {
+    flex: 1,
+    gap: 3,
+  },
+  qtyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  qtyButton: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  primaryButton: {
     borderRadius: 10,
     padding: 12,
-    gap: 8,
-  },
-  button: {
-    backgroundColor: '#0a7ea4',
-    borderRadius: 8,
-    paddingVertical: 8,
     alignItems: 'center',
   },
-  buttonText: {
-    color: '#fff',
+  primaryButtonText: {
     fontWeight: '700',
-  },
-  secondaryButton: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 8,
-    padding: 10,
-    alignItems: 'center',
-  },
-  error: {
-    color: '#d32f2f',
   },
 });

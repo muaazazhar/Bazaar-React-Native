@@ -3,7 +3,7 @@ import { useLocalSearchParams } from 'expo-router';
 import ReceiptScreen from '@/screens/ReceiptScreen';
 
 export default function ReceiptRoute() {
-  const { total } = useLocalSearchParams<{ total?: string }>();
+  const { orderId } = useLocalSearchParams<{ orderId?: string }>();
 
-  return <ReceiptScreen total={total ?? '0'} />;
+  return <ReceiptScreen orderId={orderId ?? ''} />;
 }

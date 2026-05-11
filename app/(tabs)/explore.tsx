@@ -8,15 +8,18 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Fonts } from '@/constants/theme';
+import { useThemeColor } from '@/hooks/use-theme-color';
 
 export default function TabTwoScreen() {
+  const border = useThemeColor({}, 'border');
+  const muted = useThemeColor({}, 'muted');
   return (
     <ParallaxScrollView
-      headerBackgroundColor={{ light: '#D0D0D0', dark: '#353636' }}
+      headerBackgroundColor={{ light: border, dark: border }}
       headerImage={
         <IconSymbol
           size={310}
-          color="#808080"
+          color={muted}
           name="chevron.left.forwardslash.chevron.right"
           style={styles.headerImage}
         />
@@ -100,7 +103,6 @@ export default function TabTwoScreen() {
 
 const styles = StyleSheet.create({
   headerImage: {
-    color: '#808080',
     bottom: -90,
     left: -35,
     position: 'absolute',

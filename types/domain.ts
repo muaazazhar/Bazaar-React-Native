@@ -15,14 +15,16 @@ export type AuthResponse = {
 export type Category = {
   id: string;
   name: string;
+  imageUrl?: string | null;
 };
 
 export type Product = {
-  id: string;
+  id: string | number;
   name: string;
-  price: number;
+  price: number | string;
   categoryId?: string | null;
   category?: Category | null;
+  imageUrl?: string | null;
 };
 
 export type OrderItem = {
@@ -32,8 +34,11 @@ export type OrderItem = {
   quantity: number;
 };
 
+export type PaymentMethod = 'card' | 'cod' | 'bank_transfer' | 'wallet';
+export type WalletProvider = 'easypaisa' | 'jazzcash';
+
 export type Order = {
-  id: string;
+  id: string | number;
   status: string;
   address: string;
   total: number;
@@ -41,4 +46,17 @@ export type Order = {
   userId?: string;
   user?: Pick<User, 'id' | 'email'>;
   items: OrderItem[];
+  paymentMethod?: PaymentMethod;
+  walletProvider?: WalletProvider | null;
+  paymentReference?: string | null;
+};
+
+export type PaymentSettings = {
+  bankName: string;
+  accountTitle: string;
+  accountNumber: string;
+  iban?: string | null;
+  instructions?: string | null;
+  easypaisaNumber?: string | null;
+  jazzcashNumber?: string | null;
 };
