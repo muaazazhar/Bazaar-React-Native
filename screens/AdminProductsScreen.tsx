@@ -1,21 +1,33 @@
 import { useMemo, useState } from 'react';
 import * as ImagePicker from 'expo-image-picker';
-import { Image, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ImagePickerField } from '@/components/image-picker-field';
+import { RemoteImage } from '@/components/remote-image';
 import { ScreenHeader } from '@/components/screen-header';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { ValidatingTextInput } from '@/components/validating-text-input';
+import {
+  FIELD_LIMITS,
+  validateDiscount,
+  validatePrice,
+  validateRequired,
+} from '@/constants/fieldLimits';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useCreateProductMutation, useDeleteProductMutation, useGetCategoriesQuery, useGetProductsQuery, useUpdateProductMutation } from '@/store/api/catalogApi';
+import { getApiErrorMessage, isImageSizeError } from '@/utils/apiError';
+import { getImagePart, validateImageAsset } from '@/utils/imageUpload';
 
-function getImagePart(uri: string) {
-  const fileName = uri.split('/').pop() ?? 'upload.jpg';
-  const ext = fileName.split('.').pop()?.toLowerCase();
-  const mime = ext ? `image/${ext === 'jpg' ? 'jpeg' : ext}` : 'image/jpeg';
-  return { uri, name: fileName, type: mime } as const;
-}
+type ProductFieldErrors = {
+  name?: string;
+  price?: string;
+  discount?: string;
+  category?: string;
+  image?: string;
+};
 
 export default function AdminProductsScreen() {
   const {
@@ -24,7 +36,13 @@ export default function AdminProductsScreen() {
     isError: categoriesError,
     refetch: refetchCategories,
   } = useGetCategoriesQuery();
-  const { data: products = [], isFetching, refetch } = useGetProductsQuery();
+  const {
+    data: products = [],
+    isFetching,
+    isError: productsLoadError,
+    error: productsQueryError,
+    refetch,
+  } = useGetProductsQuery();
   const [createProduct] = useCreateProductMutation();
   const [updateProduct] = useUpdateProductMutation();
   const [deleteProduct] = useDeleteProductMutation();
@@ -34,18 +52,23 @@ export default function AdminProductsScreen() {
   const [newDiscountPercent, setNewDiscountPercent] = useState('');
   const [newCategoryId, setNewCategoryId] = useState<string | null>(null);
   const [newImageUri, setNewImageUri] = useState<string | null>(null);
+  const [newImageError, setNewImageError] = useState<string | null>(null);
+  const [createFieldErrors, setCreateFieldErrors] = useState<ProductFieldErrors>({});
+
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editPrice, setEditPrice] = useState('');
   const [editDiscountPercent, setEditDiscountPercent] = useState('');
   const [editCategoryId, setEditCategoryId] = useState<string | null>(null);
   const [editImageUri, setEditImageUri] = useState<string | null>(null);
+  const [editImageError, setEditImageError] = useState<string | null>(null);
+  const [editFieldErrors, setEditFieldErrors] = useState<ProductFieldErrors>({});
+
   const [busy, setBusy] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const borderColor = useThemeColor({}, 'border');
   const surface = useThemeColor({}, 'surface');
-  const inputBackground = useThemeColor({}, 'inputBackground');
-  const inputText = useThemeColor({}, 'inputText');
   const primary = useThemeColor({}, 'primary');
   const primaryText = useThemeColor({}, 'primaryText');
   const muted = useThemeColor({}, 'muted');
@@ -53,7 +76,10 @@ export default function AdminProductsScreen() {
 
   const categoryMap = useMemo(() => new Map(categories.map((cat) => [String(cat.id), cat.name])), [categories]);
 
-  const pickImage = async (setter: (uri: string) => void) => {
+  const pickImage = async (
+    setter: (uri: string) => void,
+    setImageError: (message: string | null) => void,
+  ) => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
@@ -61,42 +87,69 @@ export default function AdminProductsScreen() {
       quality: 0.8,
     });
     if (!result.canceled && result.assets.length > 0) {
-      setter(result.assets[0].uri);
+      const asset = result.assets[0];
+      const sizeError = validateImageAsset(asset);
+      if (sizeError) {
+        setImageError(sizeError);
+        return;
+      }
+      setImageError(null);
+      setter(asset.uri);
     }
   };
 
+  const showUploadError = (error: unknown, fallback: string) => {
+    const message = getApiErrorMessage(error, fallback);
+    setFormError(message);
+    if (isImageSizeError(message)) {
+      if (editingId) {
+        setEditImageError(message);
+      } else {
+        setNewImageError(message);
+      }
+    }
+    alert(message);
+  };
+
+  const validateCreateForm = (): ProductFieldErrors => {
+    const errors: ProductFieldErrors = {};
+    const nameError = validateRequired(newName, 'Product name');
+    if (nameError) errors.name = nameError;
+    const priceError = validatePrice(newPrice);
+    if (priceError) errors.price = priceError;
+    const discountError = validateDiscount(newDiscountPercent);
+    if (discountError) errors.discount = discountError;
+    if (!newCategoryId) errors.category = 'Category is mandatory for a product.';
+    if (!newImageUri) errors.image = 'Product image is required.';
+    return errors;
+  };
+
+  const validateEditForm = (): ProductFieldErrors => {
+    const errors: ProductFieldErrors = {};
+    const nameError = validateRequired(editName, 'Product name');
+    if (nameError) errors.name = nameError;
+    const priceError = validatePrice(editPrice);
+    if (priceError) errors.price = priceError;
+    const discountError = validateDiscount(editDiscountPercent);
+    if (discountError) errors.discount = discountError;
+    if (!editCategoryId) errors.category = 'Category is mandatory for a product.';
+    return errors;
+  };
+
   const handleCreate = async () => {
-    if (!newName.trim() || !newPrice.trim()) {
-      alert('Product name and price are required.');
-      return;
-    }
-    const price = Number(newPrice);
-    if (!Number.isFinite(price) || price <= 0) {
-      alert('Price must be a positive number.');
-      return;
-    }
-    if (!newCategoryId) {
-      alert('Category is mandatory for a product.');
-      return;
-    }
-    if (!newImageUri) {
-      alert('Product image is required.');
-      return;
-    }
-    const discountPercent = Number(newDiscountPercent || 0);
-    if (!Number.isFinite(discountPercent) || discountPercent < 0 || discountPercent > 100) {
-      alert('Discount must be between 0 and 100.');
-      return;
-    }
+    const errors = validateCreateForm();
+    setCreateFieldErrors(errors);
+    if (Object.keys(errors).length > 0) return;
 
     const formData = new FormData();
     formData.append('name', newName.trim());
-    formData.append('price', String(price));
-    formData.append('discountPercent', String(discountPercent));
-    formData.append('categoryId', newCategoryId);
-    formData.append('image', getImagePart(newImageUri) as any);
+    formData.append('price', String(Number(newPrice)));
+    formData.append('discountPercent', String(Number(newDiscountPercent || 0)));
+    formData.append('categoryId', newCategoryId!);
+    formData.append('image', getImagePart(newImageUri!) as any);
 
     setBusy(true);
+    setFormError(null);
     try {
       await createProduct(formData).unwrap();
       setNewName('');
@@ -104,6 +157,10 @@ export default function AdminProductsScreen() {
       setNewDiscountPercent('');
       setNewCategoryId(null);
       setNewImageUri(null);
+      setNewImageError(null);
+      setCreateFieldErrors({});
+    } catch (error) {
+      showUploadError(error, 'Could not create product. Please try again.');
     } finally {
       setBusy(false);
     }
@@ -118,39 +175,27 @@ export default function AdminProductsScreen() {
     setEditDiscountPercent(String(product.discountPercent ?? 0));
     setEditCategoryId(product.categoryId ? String(product.categoryId) : null);
     setEditImageUri(null);
+    setEditImageError(null);
+    setEditFieldErrors({});
   };
 
   const handleUpdate = async () => {
     if (!editingId) return;
-    if (!editName.trim() || !editPrice.trim()) {
-      alert('Product name and price are required.');
-      return;
-    }
-    const price = Number(editPrice);
-    if (!Number.isFinite(price) || price <= 0) {
-      alert('Price must be a positive number.');
-      return;
-    }
-    if (!editCategoryId) {
-      alert('Category is mandatory for a product.');
-      return;
-    }
-    const discountPercent = Number(editDiscountPercent || 0);
-    if (!Number.isFinite(discountPercent) || discountPercent < 0 || discountPercent > 100) {
-      alert('Discount must be between 0 and 100.');
-      return;
-    }
+    const errors = validateEditForm();
+    setEditFieldErrors(errors);
+    if (Object.keys(errors).length > 0) return;
 
     const formData = new FormData();
     formData.append('name', editName.trim());
-    formData.append('price', String(price));
-    formData.append('discountPercent', String(discountPercent));
-    formData.append('categoryId', editCategoryId);
+    formData.append('price', String(Number(editPrice)));
+    formData.append('discountPercent', String(Number(editDiscountPercent || 0)));
+    formData.append('categoryId', editCategoryId!);
     if (editImageUri) {
       formData.append('image', getImagePart(editImageUri) as any);
     }
 
     setBusy(true);
+    setFormError(null);
     try {
       await updateProduct({ id: editingId, body: formData }).unwrap();
       setEditingId(null);
@@ -159,6 +204,10 @@ export default function AdminProductsScreen() {
       setEditDiscountPercent('');
       setEditCategoryId(null);
       setEditImageUri(null);
+      setEditImageError(null);
+      setEditFieldErrors({});
+    } catch (error) {
+      showUploadError(error, 'Could not update product. Please try again.');
     } finally {
       setBusy(false);
     }
@@ -166,8 +215,11 @@ export default function AdminProductsScreen() {
 
   const handleDelete = async (productId: string) => {
     setBusy(true);
+    setFormError(null);
     try {
       await deleteProduct({ id: productId }).unwrap();
+    } catch (error) {
+      showUploadError(error, 'Could not delete product. Please try again.');
     } finally {
       setBusy(false);
     }
@@ -177,37 +229,58 @@ export default function AdminProductsScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <ScreenHeader title="Product Management" />
+        {formError ? <ThemedText style={{ color: danger }}>{formError}</ThemedText> : null}
+        {productsLoadError ? (
+          <ThemedText style={{ color: danger }}>
+            {getApiErrorMessage(productsQueryError, 'Could not load products.')}
+          </ThemedText>
+        ) : null}
         <ThemedText style={[styles.helperText, { color: muted }]}>
           Product creation requires category and image attachment.
         </ThemedText>
 
         <ThemedView style={[styles.card, { borderColor, backgroundColor: surface }]}>
           <ThemedText type="subtitle">Create Product</ThemedText>
-          <TextInput
-            style={[styles.input, { borderColor, backgroundColor: inputBackground, color: inputText }]}
+          <ValidatingTextInput
+            label="Product name"
             placeholder="Product name"
-            placeholderTextColor={muted}
             value={newName}
-            onChangeText={setNewName}
+            onChangeText={(text) => {
+              setNewName(text);
+              if (createFieldErrors.name) setCreateFieldErrors((p) => ({ ...p, name: undefined }));
+            }}
+            maxLength={FIELD_LIMITS.productName}
+            error={createFieldErrors.name}
           />
-          <TextInput
-            style={[styles.input, { borderColor, backgroundColor: inputBackground, color: inputText }]}
+          <ValidatingTextInput
+            label="Price"
             placeholder="Price"
-            placeholderTextColor={muted}
-            keyboardType="numeric"
             value={newPrice}
-            onChangeText={setNewPrice}
-          />
-          <TextInput
-            style={[styles.input, { borderColor, backgroundColor: inputBackground, color: inputText }]}
-            placeholder="Discount % (optional)"
-            placeholderTextColor={muted}
+            onChangeText={(text) => {
+              setNewPrice(text.replace(/[^0-9.]/g, ''));
+              if (createFieldErrors.price) setCreateFieldErrors((p) => ({ ...p, price: undefined }));
+            }}
+            maxLength={FIELD_LIMITS.price}
             keyboardType="numeric"
+            error={createFieldErrors.price}
+          />
+          <ValidatingTextInput
+            label="Discount % (optional)"
+            placeholder="0"
             value={newDiscountPercent}
-            onChangeText={setNewDiscountPercent}
+            onChangeText={(text) => {
+              setNewDiscountPercent(text.replace(/[^0-9]/g, ''));
+              if (createFieldErrors.discount) setCreateFieldErrors((p) => ({ ...p, discount: undefined }));
+            }}
+            maxLength={FIELD_LIMITS.discountPercent}
+            keyboardType="numeric"
+            error={createFieldErrors.discount}
           />
 
           <ThemedText type="defaultSemiBold">Select Category *</ThemedText>
+          {createFieldErrors.category ? (
+            <ThemedText style={{ color: danger, fontSize: 12 }}>{createFieldErrors.category}</ThemedText>
+          ) : null}
           {categoriesFetching ? (
             <ThemedText style={{ color: muted }}>Loading categories...</ThemedText>
           ) : null}
@@ -233,7 +306,10 @@ export default function AdminProductsScreen() {
                     { borderColor },
                     newCategoryId === String(category.id) && { backgroundColor: primary, borderColor: primary },
                   ]}
-                  onPress={() => setNewCategoryId(String(category.id))}
+                  onPress={() => {
+                    setNewCategoryId(String(category.id));
+                    if (createFieldErrors.category) setCreateFieldErrors((p) => ({ ...p, category: undefined }));
+                  }}
                   disabled={busy}>
                   <ThemedText style={newCategoryId === String(category.id) ? { color: primaryText } : undefined}>{category.name}</ThemedText>
                 </Pressable>
@@ -241,10 +317,15 @@ export default function AdminProductsScreen() {
             </View>
           )}
 
-          <Pressable style={[styles.button, { backgroundColor: primary }]} onPress={() => pickImage(setNewImageUri)} disabled={busy}>
-            <ThemedText style={[styles.buttonText, { color: primaryText }]}>Select Product Image</ThemedText>
-          </Pressable>
-          {newImageUri ? <Image source={{ uri: newImageUri }} style={styles.preview} /> : null}
+          <ImagePickerField
+            label="Select Product Image"
+            onPress={() => pickImage(setNewImageUri, setNewImageError)}
+            imageUri={newImageUri}
+            imageError={newImageError ?? createFieldErrors.image}
+            disabled={busy}
+            recyclingKey={newImageUri ? `new-${newImageUri}` : undefined}
+            previewStyle={styles.preview}
+          />
 
           <Pressable style={[styles.button, { backgroundColor: primary }, busy && styles.buttonDisabled]} onPress={handleCreate} disabled={busy}>
             <ThemedText style={[styles.buttonText, { color: primaryText }]}>Create Product</ThemedText>
@@ -263,7 +344,9 @@ export default function AdminProductsScreen() {
               {Number(product.discountPercent ?? 0) > 0 ? `  (${product.discountPercent}% off)` : ''}
             </ThemedText>
             <ThemedText>Category: {product.category?.name ?? categoryMap.get(String(product.categoryId ?? '')) ?? 'N/A'}</ThemedText>
-            {product.imageUrl ? <Image source={{ uri: product.imageUrl }} style={styles.preview} /> : null}
+            {product.imageUrl ? (
+              <RemoteImage uri={product.imageUrl} style={styles.preview} recyclingKey={`product-${product.id}`} />
+            ) : null}
             <Pressable style={[styles.secondaryButton, { borderColor }]} onPress={() => startEdit(String(product.id))} disabled={busy}>
               <ThemedText>Edit Product</ThemedText>
             </Pressable>
@@ -276,30 +359,45 @@ export default function AdminProductsScreen() {
         {editingId ? (
           <ThemedView style={[styles.card, { borderColor, backgroundColor: surface }]}>
             <ThemedText type="subtitle">Edit Product</ThemedText>
-            <TextInput
-              style={[styles.input, { borderColor, backgroundColor: inputBackground, color: inputText }]}
+            <ValidatingTextInput
+              label="Product name"
               placeholder="Product name"
-              placeholderTextColor={muted}
               value={editName}
-              onChangeText={setEditName}
+              onChangeText={(text) => {
+                setEditName(text);
+                if (editFieldErrors.name) setEditFieldErrors((p) => ({ ...p, name: undefined }));
+              }}
+              maxLength={FIELD_LIMITS.productName}
+              error={editFieldErrors.name}
             />
-            <TextInput
-              style={[styles.input, { borderColor, backgroundColor: inputBackground, color: inputText }]}
+            <ValidatingTextInput
+              label="Price"
               placeholder="Price"
-              placeholderTextColor={muted}
-              keyboardType="numeric"
               value={editPrice}
-              onChangeText={setEditPrice}
-            />
-            <TextInput
-              style={[styles.input, { borderColor, backgroundColor: inputBackground, color: inputText }]}
-              placeholder="Discount %"
-              placeholderTextColor={muted}
+              onChangeText={(text) => {
+                setEditPrice(text.replace(/[^0-9.]/g, ''));
+                if (editFieldErrors.price) setEditFieldErrors((p) => ({ ...p, price: undefined }));
+              }}
+              maxLength={FIELD_LIMITS.price}
               keyboardType="numeric"
+              error={editFieldErrors.price}
+            />
+            <ValidatingTextInput
+              label="Discount %"
+              placeholder="0"
               value={editDiscountPercent}
-              onChangeText={setEditDiscountPercent}
+              onChangeText={(text) => {
+                setEditDiscountPercent(text.replace(/[^0-9]/g, ''));
+                if (editFieldErrors.discount) setEditFieldErrors((p) => ({ ...p, discount: undefined }));
+              }}
+              maxLength={FIELD_LIMITS.discountPercent}
+              keyboardType="numeric"
+              error={editFieldErrors.discount}
             />
             <ThemedText type="defaultSemiBold">Select Category *</ThemedText>
+            {editFieldErrors.category ? (
+              <ThemedText style={{ color: danger, fontSize: 12 }}>{editFieldErrors.category}</ThemedText>
+            ) : null}
             {!categoriesFetching && categories.length === 0 ? (
               <View style={styles.categoryEmptyState}>
                 <ThemedText style={{ color: muted }}>No categories available.</ThemedText>
@@ -317,17 +415,26 @@ export default function AdminProductsScreen() {
                       { borderColor },
                       editCategoryId === String(category.id) && { backgroundColor: primary, borderColor: primary },
                     ]}
-                    onPress={() => setEditCategoryId(String(category.id))}
+                    onPress={() => {
+                      setEditCategoryId(String(category.id));
+                      if (editFieldErrors.category) setEditFieldErrors((p) => ({ ...p, category: undefined }));
+                    }}
                     disabled={busy}>
                     <ThemedText style={editCategoryId === String(category.id) ? { color: primaryText } : undefined}>{category.name}</ThemedText>
                   </Pressable>
                 ))}
               </View>
             )}
-            <Pressable style={[styles.secondaryButton, { borderColor }]} onPress={() => pickImage(setEditImageUri)} disabled={busy}>
-              <ThemedText>Select New Image (optional)</ThemedText>
-            </Pressable>
-            {editImageUri ? <Image source={{ uri: editImageUri }} style={styles.preview} /> : null}
+            <ImagePickerField
+              label="Select New Image (optional)"
+              variant="secondary"
+              onPress={() => pickImage(setEditImageUri, setEditImageError)}
+              imageUri={editImageUri}
+              imageError={editImageError}
+              disabled={busy}
+              recyclingKey={editImageUri ? `edit-${editImageUri}` : undefined}
+              previewStyle={styles.preview}
+            />
             <Pressable style={[styles.button, { backgroundColor: primary }, busy && styles.buttonDisabled]} onPress={handleUpdate} disabled={busy}>
               <ThemedText style={[styles.buttonText, { color: primaryText }]}>Save Product</ThemedText>
             </Pressable>
@@ -356,11 +463,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 12,
     gap: 10,
-  },
-  input: {
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 12,
   },
   chipsRow: {
     flexDirection: 'row',

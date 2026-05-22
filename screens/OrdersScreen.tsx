@@ -6,9 +6,13 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useGetMyOrdersQuery } from '@/store/api/ordersApi';
+import { getApiErrorMessage } from '@/utils/apiError';
 
 export default function OrdersScreen() {
-  const { data: orders = [], isLoading, isFetching, isError, refetch } = useGetMyOrdersQuery();
+  const { data: orders = [], isLoading, isFetching, isError, error, refetch } = useGetMyOrdersQuery();
+  const loadError = isError
+    ? getApiErrorMessage(error, 'Could not load order history.')
+    : null;
   const borderColor = useThemeColor({}, 'border');
   const surface = useThemeColor({}, 'surface');
   const danger = useThemeColor({}, 'danger');
@@ -22,7 +26,7 @@ export default function OrdersScreen() {
         </Pressable>
 
       {(isLoading || isFetching) ? <ActivityIndicator /> : null}
-      {isError ? <ThemedText style={[styles.error, { color: danger }]}>Could not load order history.</ThemedText> : null}
+      {loadError ? <ThemedText style={[styles.error, { color: danger }]}>{loadError}</ThemedText> : null}
 
       {!isLoading && orders.length === 0 ? <ThemedText>No orders yet.</ThemedText> : null}
         {orders.map((order) => (

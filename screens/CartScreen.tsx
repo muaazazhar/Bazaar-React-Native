@@ -1,8 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { Image, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { RemoteImage } from "@/components/remote-image";
 import { ScreenHeader } from "@/components/screen-header";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
@@ -53,9 +54,11 @@ export default function CartScreen() {
                 <ThemedView
                   key={`${item.product.id}-${idx}`}
                   style={[styles.itemRow, { borderColor, backgroundColor: surface }]}>
-                  <Image
-                    source={item.product.imageUrl ? { uri: item.product.imageUrl } : require("@/assets/images/icon.png")}
+                  <RemoteImage
+                    uri={item.product.imageUrl}
                     style={styles.itemImage}
+                    recyclingKey={`cart-${item.product.id}`}
+                    fallbackSource={require("@/assets/images/icon.png")}
                   />
                   <View style={styles.itemInfo}>
                     <ThemedText numberOfLines={1} style={styles.itemName}>{item.product.name}</ThemedText>

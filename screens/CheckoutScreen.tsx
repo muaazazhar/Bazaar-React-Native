@@ -1,9 +1,12 @@
 import { router } from "expo-router";
 import { useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, TextInput, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { ValidatingTextInput } from "@/components/validating-text-input";
 import { ScreenHeader } from "@/components/screen-header";
+import { FIELD_LIMITS, validateRequired } from "@/constants/fieldLimits";
+import { getApiErrorMessage } from "@/utils/apiError";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { useCart } from "@/context/CartContext";
@@ -24,11 +27,13 @@ export default function CheckoutScreen() {
   const [loading, setLoading] = useState(false);
   const [locating, setLocating] = useState(false);
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<{
+    address?: string;
+    paymentReference?: string;
+  }>({});
 
   const borderColor = useThemeColor({}, "border");
   const surface = useThemeColor({}, "surface");
-  const inputBackground = useThemeColor({}, "inputBackground");
-  const inputText = useThemeColor({}, "inputText");
   const primary = useThemeColor({}, "primary");
   const primaryText = useThemeColor({}, "primaryText");
   const danger = useThemeColor({}, "danger");
@@ -78,7 +83,10 @@ export default function CheckoutScreen() {
         setError("Could not resolve address for current location.");
         return;
       }
-      setAddress(data.display_name);
+      setAddress(data.display_name.slice(0, FIELD_LIMITS.address));
+      if (fieldErrors.address) {
+        setFieldErrors((prev) => ({ ...prev, address: undefined }));
+      }
     } catch {
       setError("Could not fetch current location and address.");
     } finally {
@@ -87,10 +95,18 @@ export default function CheckoutScreen() {
   };
 
   const handlePlaceOrder = async () => {
-    if (!address.trim()) {
-      setError("Please add a delivery address.");
-      return;
+    const errors: { address?: string; paymentReference?: string } = {};
+    const addressError = validateRequired(address, "Delivery address");
+    if (addressError) errors.address = addressError;
+    if (
+      (paymentMethod === "bank_transfer" || paymentMethod === "wallet") &&
+      !paymentReference.trim()
+    ) {
+      errors.paymentReference = "Payment reference is required for this method.";
     }
+    setFieldErrors(errors);
+    if (Object.keys(errors).length > 0) return;
+
     if (!paymentAvailability[paymentMethod]) {
       setError("Selected payment method is currently unavailable.");
       return;
@@ -113,8 +129,8 @@ export default function CheckoutScreen() {
 
       clearCart();
       router.replace({ pathname: "/receipt", params: { orderId: String(order.id) } });
-    } catch {
-      setError("Could not place order. Please try again.");
+    } catch (err) {
+      setError(getApiErrorMessage(err, "Could not place order. Please try again."));
     } finally {
       setLoading(false);
     }
@@ -188,25 +204,36 @@ export default function CheckoutScreen() {
           ) : null}
 
           {(paymentMethod === "bank_transfer" || paymentMethod === "wallet") ? (
-            <TextInput
-              style={[styles.input, { borderColor, backgroundColor: inputBackground, color: inputText }]}
-              placeholder="Payment Reference"
-              placeholderTextColor={muted}
+            <ValidatingTextInput
+              label="Payment Reference"
+              placeholder="Transaction ID or reference"
               value={paymentReference}
-              onChangeText={setPaymentReference}
+              onChangeText={(text) => {
+                setPaymentReference(text);
+                if (fieldErrors.paymentReference) {
+                  setFieldErrors((prev) => ({ ...prev, paymentReference: undefined }));
+                }
+              }}
+              maxLength={FIELD_LIMITS.paymentReference}
+              error={fieldErrors.paymentReference}
             />
           ) : null}
         </ThemedView>
 
         <ThemedView style={[styles.card, { borderColor, backgroundColor: surface }]}>
-          <ThemedText style={styles.label}>Delivery Address</ThemedText>
-          <TextInput
-            style={[styles.input, { borderColor, backgroundColor: inputBackground, color: inputText }]}
+          <ValidatingTextInput
+            label="Delivery Address"
             placeholder="House 12, Street 4, City"
-            placeholderTextColor={muted}
             value={address}
-            onChangeText={setAddress}
+            onChangeText={(text) => {
+              setAddress(text);
+              if (fieldErrors.address) {
+                setFieldErrors((prev) => ({ ...prev, address: undefined }));
+              }
+            }}
+            maxLength={FIELD_LIMITS.address}
             multiline
+            error={fieldErrors.address}
           />
           <Pressable
             style={[styles.secondaryButton, { borderColor }, locating && styles.buttonDisabled]}
@@ -250,11 +277,6 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
     fontWeight: "700",
-  },
-  input: {
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 12,
   },
   methodRow: {
     flexDirection: "row",

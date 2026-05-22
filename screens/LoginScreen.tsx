@@ -1,6 +1,5 @@
-import type { FetchBaseQueryError } from "@reduxjs/toolkit/query";
-import { router } from "expo-router";
 import * as Linking from "expo-linking";
+import { router } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { useState } from "react";
 import {
@@ -10,11 +9,13 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  TextInput,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { ValidatingTextInput } from "@/components/validating-text-input";
 import { ScreenHeader } from "@/components/screen-header";
+import { FIELD_LIMITS, validateEmail, validateRequired } from "@/constants/fieldLimits";
+import { getApiErrorMessage } from "@/utils/apiError";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { useThemeColor } from "@/hooks/use-theme-color";
@@ -38,7 +39,11 @@ function joinUrl(base: string, path: string) {
   return `${normalizedBase}${normalizedPath}`;
 }
 
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  message: string,
+): Promise<T> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
   const timeoutPromise = new Promise<T>((_, reject) => {
     timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
@@ -113,9 +118,13 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<{
+    identifier?: string;
+    username?: string;
+    email?: string;
+    password?: string;
+  }>({});
   const borderColor = useThemeColor({}, "border");
-  const inputBackground = useThemeColor({}, "inputBackground");
-  const inputText = useThemeColor({}, "inputText");
   const primary = useThemeColor({}, "primary");
   const primaryText = useThemeColor({}, "primaryText");
   const muted = useThemeColor({}, "muted");
@@ -127,9 +136,13 @@ export default function LoginScreen() {
   const googleAppCallbackUrl =
     process.env.EXPO_PUBLIC_GOOGLE_APP_CALLBACK_URL?.trim();
   const googleConfigured =
-    process.env.EXPO_PUBLIC_ENABLE_GOOGLE_AUTH?.trim()?.toLowerCase() !== "false";
+    process.env.EXPO_PUBLIC_ENABLE_GOOGLE_AUTH?.trim()?.toLowerCase() !==
+    "false";
 
-  const finishLogin = async (loginData: { user: User; access_token: string }) => {
+  const finishLogin = async (loginData: {
+    user: User;
+    access_token: string;
+  }) => {
     dispatch(
       setCredentials({
         user: loginData.user,
@@ -145,14 +158,33 @@ export default function LoginScreen() {
 
   const handleSubmit = async () => {
     setError("");
+    const errors: {
+      identifier?: string;
+      username?: string;
+      email?: string;
+      password?: string;
+    } = {};
+
+    if (isRegisterMode) {
+      const usernameError = validateRequired(username, "Username");
+      if (usernameError) errors.username = usernameError;
+      const emailError = validateEmail(email);
+      if (emailError) errors.email = emailError;
+      const passwordError = validateRequired(password, "Password");
+      if (passwordError) errors.password = passwordError;
+    } else {
+      const identifierError = validateRequired(identifier, "Email or username");
+      if (identifierError) errors.identifier = identifierError;
+      const passwordError = validateRequired(password, "Password");
+      if (passwordError) errors.password = passwordError;
+    }
+
+    setFieldErrors(errors);
+    if (Object.keys(errors).length > 0) return;
+
     setLoading(true);
     try {
       if (isRegisterMode) {
-        if (!username.trim() || !email.trim() || !password.trim()) {
-          setError("Username, email, and password are required.");
-          setLoading(false);
-          return;
-        }
         await registerMutation({
           username: username.trim(),
           email: email.trim(),
@@ -164,11 +196,6 @@ export default function LoginScreen() {
         }).unwrap();
         await finishLogin(loginData);
       } else {
-        if (!identifier.trim() || !password.trim()) {
-          setError("Please enter identifier and password.");
-          setLoading(false);
-          return;
-        }
         const loginData = await loginMutation({
           identifier: identifier.trim(),
           password,
@@ -177,22 +204,14 @@ export default function LoginScreen() {
       }
     } catch (err) {
       await clearStoredAuthSession();
-      const apiError = err as FetchBaseQueryError | undefined;
-      if (
-        apiError &&
-        "status" in apiError &&
-        apiError.status === "FETCH_ERROR"
-      ) {
-        setError(
-          "Cannot reach backend. Check EXPO_PUBLIC_API_URL and server status.",
-        );
-      } else {
-        setError(
+      setError(
+        getApiErrorMessage(
+          err,
           isRegisterMode
             ? "Signup failed. Please try again."
             : "Login failed. Please check your credentials.",
-        );
-      }
+        ),
+      );
     } finally {
       setLoading(false);
     }
@@ -278,16 +297,12 @@ export default function LoginScreen() {
 
       setError("Google sign-in failed: no auth code returned.");
     } catch (err) {
-      const message =
-        err instanceof Error && err.message
-          ? err.message
-          : "Google sign-in failed. Please try again.";
-      if (message.includes("Timed out")) {
+      if (err instanceof Error && err.message.includes("Timed out")) {
         setError(
           "Google callback received, but backend exchange timed out. If using a physical phone, replace localhost in frontend env with your computer LAN IP.",
         );
       } else {
-        setError("Google sign-in failed. Please try again.");
+        setError(getApiErrorMessage(err, "Google sign-in failed. Please try again."));
       }
     } finally {
       setGoogleLoading(false);
@@ -313,93 +328,86 @@ export default function LoginScreen() {
           showsVerticalScrollIndicator={false}
         >
           <ThemedView style={[styles.container, { backgroundColor }]}>
-            <ScreenHeader title={isRegisterMode ? "Create Account" : "Login"} showBack={false} />
+            <ScreenHeader
+              title={isRegisterMode ? "Create Account" : "Login"}
+              showBack={false}
+            />
             <ThemedText style={[styles.helperText, { color: muted }]}>
               {isRegisterMode
                 ? "Create your account to start ordering."
                 : "Sign in with your email or username."}
             </ThemedText>
             {!isRegisterMode ? (
-              <>
-                <ThemedText style={styles.label}>Email or Username</ThemedText>
-                <TextInput
-                  style={[
-                    styles.input,
-                    {
-                      borderColor,
-                      backgroundColor: inputBackground,
-                      color: inputText,
-                    },
-                  ]}
-                  placeholder="Enter email or username"
-                  placeholderTextColor={muted}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  textContentType="username"
-                  value={identifier}
-                  onChangeText={setIdentifier}
-                />
-              </>
+              <ValidatingTextInput
+                label="Email or Username"
+                placeholder="Enter email or username"
+                value={identifier}
+                onChangeText={(text) => {
+                  setIdentifier(text);
+                  if (fieldErrors.identifier) {
+                    setFieldErrors((prev) => ({ ...prev, identifier: undefined }));
+                  }
+                }}
+                maxLength={FIELD_LIMITS.identifier}
+                autoCapitalize="none"
+                autoCorrect={false}
+                textContentType="username"
+                error={fieldErrors.identifier}
+              />
             ) : null}
             {isRegisterMode ? (
               <>
-                <ThemedText style={styles.label}>Username</ThemedText>
-                <TextInput
-                  style={[
-                    styles.input,
-                    {
-                      borderColor,
-                      backgroundColor: inputBackground,
-                      color: inputText,
-                    },
-                  ]}
+                <ValidatingTextInput
+                  label="Username"
                   placeholder="Choose a username"
-                  placeholderTextColor={muted}
+                  value={username}
+                  onChangeText={(text) => {
+                    setUsername(text);
+                    if (fieldErrors.username) {
+                      setFieldErrors((prev) => ({ ...prev, username: undefined }));
+                    }
+                  }}
+                  maxLength={FIELD_LIMITS.username}
                   autoCapitalize="none"
                   autoCorrect={false}
                   textContentType="username"
-                  value={username}
-                  onChangeText={setUsername}
+                  error={fieldErrors.username}
                 />
-                <ThemedText style={styles.label}>Email</ThemedText>
-                <TextInput
-                  style={[
-                    styles.input,
-                    {
-                      borderColor,
-                      backgroundColor: inputBackground,
-                      color: inputText,
-                    },
-                  ]}
+                <ValidatingTextInput
+                  label="Email"
                   placeholder="Enter your email"
-                  placeholderTextColor={muted}
+                  value={email}
+                  onChangeText={(text) => {
+                    setEmail(text);
+                    if (fieldErrors.email) {
+                      setFieldErrors((prev) => ({ ...prev, email: undefined }));
+                    }
+                  }}
+                  maxLength={FIELD_LIMITS.email}
                   autoCapitalize="none"
                   autoCorrect={false}
                   keyboardType="email-address"
                   textContentType="emailAddress"
-                  value={email}
-                  onChangeText={setEmail}
+                  error={fieldErrors.email}
                 />
               </>
             ) : null}
-            <ThemedText style={styles.label}>Password</ThemedText>
-            <TextInput
-              style={[
-                styles.input,
-                {
-                  borderColor,
-                  backgroundColor: inputBackground,
-                  color: inputText,
-                },
-              ]}
+            <ValidatingTextInput
+              label="Password"
               placeholder="Enter password"
-              placeholderTextColor={muted}
+              value={password}
+              onChangeText={(text) => {
+                setPassword(text);
+                if (fieldErrors.password) {
+                  setFieldErrors((prev) => ({ ...prev, password: undefined }));
+                }
+              }}
+              maxLength={FIELD_LIMITS.password}
               autoCapitalize="none"
               autoCorrect={false}
               textContentType="password"
               secureTextEntry={!showPassword}
-              value={password}
-              onChangeText={setPassword}
+              error={fieldErrors.password}
             />
             <Pressable
               style={styles.toggleButton}
@@ -437,7 +445,11 @@ export default function LoginScreen() {
                 { borderColor },
                 (loading || googleLoading) && styles.buttonDisabled,
               ]}
-              onPress={() => setIsRegisterMode((prev) => !prev)}
+              onPress={() => {
+                setIsRegisterMode((prev) => !prev);
+                setFieldErrors({});
+                setError("");
+              }}
               disabled={loading || googleLoading}
             >
               <ThemedText>
@@ -448,21 +460,15 @@ export default function LoginScreen() {
             </Pressable>
             {!isRegisterMode ? (
               <Pressable
-                style={[
-                  styles.googleButton,
-                  { borderColor },
-                  (loading || googleLoading) && styles.buttonDisabled,
-                ]}
-                onPress={handleGoogleSignIn}
-                disabled={loading || googleLoading || !googleConfigured}
+                style={[styles.googleButton, { borderColor, opacity: 0.6 }]}
+                disabled={true}
+                onHoverIn={() => setError("Google sign-in is under deployment")}
+                onHoverOut={() => setError("")}
+                onLongPress={() =>
+                  setError("Google sign-in is under deployment")
+                }
               >
-                <ThemedText>
-                  {!googleConfigured
-                    ? "Google Sign-In Not Configured"
-                    : googleLoading
-                      ? "Connecting Google..."
-                      : "Continue with Google"}
-                </ThemedText>
+                <ThemedText>Google Sign-In (Coming Soon)</ThemedText>
               </Pressable>
             ) : null}
           </ThemedView>
@@ -490,15 +496,6 @@ const styles = StyleSheet.create({
     alignSelf: "center",
     padding: 16,
     gap: 12,
-  },
-  input: {
-    borderWidth: 1,
-    borderRadius: 8,
-    padding: 12,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: "600",
   },
   helperText: {
     // color set from theme token

@@ -5,12 +5,18 @@ import { ScreenHeader } from '@/components/screen-header';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useGetReceiptQuery } from '@/store/api/ordersApi';
+import { getApiErrorMessage } from '@/utils/apiError';
+import { useThemeColor } from '@/hooks/use-theme-color';
 
 export default function ReceiptScreen({ orderId }: { orderId: string }) {
-  const { data, isLoading, isError } = useGetReceiptQuery(
+  const { data, isLoading, isError, error } = useGetReceiptQuery(
     { id: orderId },
     { skip: !orderId }
   );
+  const danger = useThemeColor({}, 'danger');
+  const loadError = isError
+    ? getApiErrorMessage(error, 'Unable to load receipt.')
+    : null;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
@@ -18,7 +24,7 @@ export default function ReceiptScreen({ orderId }: { orderId: string }) {
         <ScreenHeader title="Receipt" />
         <ThemedText type="subtitle">Order Successful 🎉</ThemedText>
         {isLoading ? <ActivityIndicator /> : null}
-        {isError ? <ThemedText>Unable to load receipt.</ThemedText> : null}
+        {loadError ? <ThemedText style={{ color: danger }}>{loadError}</ThemedText> : null}
         {data ? (
           <>
             <ThemedText type="subtitle">Receipt: {data.receiptNumber}</ThemedText>

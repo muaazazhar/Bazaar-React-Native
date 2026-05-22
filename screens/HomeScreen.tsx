@@ -1,24 +1,46 @@
 import { router } from 'expo-router';
-import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { RemoteImage } from '@/components/remote-image';
 import { ScreenHeader } from '@/components/screen-header';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useCart } from '@/context/CartContext';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useGetCategoriesQuery, useGetProductsQuery } from '@/store/api/catalogApi';
+import { getApiErrorMessage } from '@/utils/apiError';
 
 export default function HomeScreen() {
   const { cart, addToCart, increaseQuantity, decreaseQuantity } = useCart();
-  const { data: products = [], isLoading, isFetching, refetch } = useGetProductsQuery();
-  const { data: categories = [] } = useGetCategoriesQuery();
+  const {
+    data: products = [],
+    isLoading: productsLoading,
+    isFetching,
+    isError: productsError,
+    error: productsQueryError,
+    refetch,
+  } = useGetProductsQuery();
+  const {
+    data: categories = [],
+    isError: categoriesError,
+    error: categoriesQueryError,
+  } = useGetCategoriesQuery();
 
   const borderColor = useThemeColor({}, 'border');
   const surface = useThemeColor({}, 'surface');
   const primary = useThemeColor({}, 'primary');
   const primaryText = useThemeColor({}, 'primaryText');
   const muted = useThemeColor({}, 'muted');
+  const danger = useThemeColor({}, 'danger');
+
+  const catalogError =
+    productsError || categoriesError
+      ? getApiErrorMessage(
+          productsQueryError ?? categoriesQueryError,
+          'Could not load store catalog.',
+        )
+      : null;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
@@ -39,14 +61,17 @@ export default function HomeScreen() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoriesRow}>
           {categories.map((category) => (
             <ThemedView key={category.id} style={[styles.categoryCard, { borderColor, backgroundColor: surface }]}>
-              {category.imageUrl ? <Image source={{ uri: category.imageUrl }} style={styles.categoryImage} /> : null}
+              {category.imageUrl ? (
+                <RemoteImage uri={category.imageUrl} style={styles.categoryImage} recyclingKey={`category-${category.id}`} />
+              ) : null}
               <ThemedText style={styles.categoryName}>{category.name}</ThemedText>
             </ThemedView>
           ))}
         </ScrollView>
 
         <ThemedText type="subtitle">Popular products</ThemedText>
-        {isLoading ? <ActivityIndicator /> : null}
+        {catalogError ? <ThemedText style={{ color: danger }}>{catalogError}</ThemedText> : null}
+        {productsLoading ? <ActivityIndicator /> : null}
         {products.map((product) => {
           const cartItem = cart.find((item) => item.product.id === product.id);
           const basePrice = Number(product.price) || 0;
@@ -58,7 +83,9 @@ export default function HomeScreen() {
           return (
             <ThemedView key={String(product.id)} style={[styles.productCard, { borderColor, backgroundColor: surface }]}>
               <View style={styles.productRow}>
-                {product.imageUrl ? <Image source={{ uri: product.imageUrl }} style={styles.productImage} /> : null}
+                {product.imageUrl ? (
+                  <RemoteImage uri={product.imageUrl} style={styles.productImage} recyclingKey={`product-${product.id}`} />
+                ) : null}
                 <View style={styles.productInfo}>
                   <ThemedText type="defaultSemiBold">{product.name}</ThemedText>
                   <View style={styles.priceRow}>

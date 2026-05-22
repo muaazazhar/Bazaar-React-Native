@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, TextInput } from 'react-native';
+import { Pressable, ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ScreenHeader } from '@/components/screen-header';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
+import { ValidatingTextInput } from '@/components/validating-text-input';
+import { FIELD_LIMITS, validateRequired } from '@/constants/fieldLimits';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useGetAdminPaymentSettingsQuery, useUpsertPaymentSettingsMutation } from '@/store/api/paymentSettingsApi';
+import { getApiErrorMessage } from '@/utils/apiError';
 import type { PaymentSettings } from '@/types/domain';
 
 const defaultSettings: PaymentSettings = {
@@ -19,22 +22,30 @@ const defaultSettings: PaymentSettings = {
   jazzcashNumber: null,
 };
 
+type PaymentFieldErrors = {
+  bankName?: string;
+  accountName?: string;
+  accountNumber?: string;
+  iban?: string;
+};
+
 export default function AdminPaymentSettingsScreen() {
-  const { data } = useGetAdminPaymentSettingsQuery();
+  const { data, isError: settingsLoadError, error: settingsQueryError } = useGetAdminPaymentSettingsQuery();
   const [upsertSettings] = useUpsertPaymentSettingsMutation();
   const [bankName, setBankName] = useState('');
   const [accountName, setAccountName] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
   const [iban, setIban] = useState('');
   const [saving, setSaving] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<PaymentFieldErrors>({});
+  const [formError, setFormError] = useState<string | null>(null);
 
   const borderColor = useThemeColor({}, 'border');
   const surface = useThemeColor({}, 'surface');
-  const inputBackground = useThemeColor({}, 'inputBackground');
-  const inputText = useThemeColor({}, 'inputText');
   const primary = useThemeColor({}, 'primary');
   const primaryText = useThemeColor({}, 'primaryText');
   const muted = useThemeColor({}, 'muted');
+  const danger = useThemeColor({}, 'danger');
 
   useEffect(() => {
     if (data) {
@@ -46,11 +57,20 @@ export default function AdminPaymentSettingsScreen() {
   }, [data]);
 
   const handleSave = async () => {
-    if (!bankName.trim() || !accountName.trim() || !accountNumber.trim() || !iban.trim()) {
-      alert('Bank name, account name, account no, and IBAN are required.');
-      return;
-    }
+    const errors: PaymentFieldErrors = {};
+    const bankNameError = validateRequired(bankName, 'Bank name');
+    if (bankNameError) errors.bankName = bankNameError;
+    const accountNameError = validateRequired(accountName, 'Account name');
+    if (accountNameError) errors.accountName = accountNameError;
+    const accountNumberError = validateRequired(accountNumber, 'Account no');
+    if (accountNumberError) errors.accountNumber = accountNumberError;
+    const ibanError = validateRequired(iban, 'IBAN');
+    if (ibanError) errors.iban = ibanError;
+    setFieldErrors(errors);
+    if (Object.keys(errors).length > 0) return;
+
     setSaving(true);
+    setFormError(null);
     try {
       const payload: PaymentSettings = {
         ...defaultSettings,
@@ -64,6 +84,10 @@ export default function AdminPaymentSettingsScreen() {
         ...payload,
       }).unwrap();
       alert('Bank account details updated.');
+    } catch (error) {
+      const message = getApiErrorMessage(error, 'Could not save bank account details.');
+      setFormError(message);
+      alert(message);
     } finally {
       setSaving(false);
     }
@@ -76,39 +100,58 @@ export default function AdminPaymentSettingsScreen() {
         <ThemedText style={{ color: muted }}>
           Add or edit bank payment details.
         </ThemedText>
+        {formError ? <ThemedText style={{ color: danger }}>{formError}</ThemedText> : null}
+        {settingsLoadError ? (
+          <ThemedText style={{ color: danger }}>
+            {getApiErrorMessage(settingsQueryError, 'Could not load payment settings.')}
+          </ThemedText>
+        ) : null}
 
         <ThemedView style={[styles.card, { borderColor, backgroundColor: surface }]}>
-          <ThemedText style={styles.label}>Bank Name</ThemedText>
-          <TextInput
-            style={[styles.input, { borderColor, backgroundColor: inputBackground, color: inputText }]}
-            value={bankName}
-            onChangeText={setBankName}
+          <ValidatingTextInput
+            label="Bank Name"
             placeholder="Meezan Bank"
-            placeholderTextColor={muted}
+            value={bankName}
+            onChangeText={(text) => {
+              setBankName(text);
+              if (fieldErrors.bankName) setFieldErrors((p) => ({ ...p, bankName: undefined }));
+            }}
+            maxLength={FIELD_LIMITS.bankName}
+            error={fieldErrors.bankName}
           />
-          <ThemedText style={styles.label}>Account Name</ThemedText>
-          <TextInput
-            style={[styles.input, { borderColor, backgroundColor: inputBackground, color: inputText }]}
-            value={accountName}
-            onChangeText={setAccountName}
+          <ValidatingTextInput
+            label="Account Name"
             placeholder="Bazaar Store"
-            placeholderTextColor={muted}
+            value={accountName}
+            onChangeText={(text) => {
+              setAccountName(text);
+              if (fieldErrors.accountName) setFieldErrors((p) => ({ ...p, accountName: undefined }));
+            }}
+            maxLength={FIELD_LIMITS.accountTitle}
+            error={fieldErrors.accountName}
           />
-          <ThemedText style={styles.label}>Account No</ThemedText>
-          <TextInput
-            style={[styles.input, { borderColor, backgroundColor: inputBackground, color: inputText }]}
-            value={accountNumber}
-            onChangeText={setAccountNumber}
+          <ValidatingTextInput
+            label="Account No"
             placeholder="1234-5678-9012"
-            placeholderTextColor={muted}
+            value={accountNumber}
+            onChangeText={(text) => {
+              setAccountNumber(text);
+              if (fieldErrors.accountNumber) setFieldErrors((p) => ({ ...p, accountNumber: undefined }));
+            }}
+            maxLength={FIELD_LIMITS.accountNumber}
+            error={fieldErrors.accountNumber}
           />
-          <ThemedText style={styles.label}>IBAN</ThemedText>
-          <TextInput
-            style={[styles.input, { borderColor, backgroundColor: inputBackground, color: inputText }]}
-            value={iban}
-            onChangeText={setIban}
+          <ValidatingTextInput
+            label="IBAN"
             placeholder="PKxx...."
-            placeholderTextColor={muted}
+            value={iban}
+            onChangeText={(text) => {
+              setIban(text.toUpperCase());
+              if (fieldErrors.iban) setFieldErrors((p) => ({ ...p, iban: undefined }));
+            }}
+            maxLength={FIELD_LIMITS.iban}
+            autoCapitalize="characters"
+            error={fieldErrors.iban}
           />
           <Pressable style={[styles.button, { backgroundColor: primary }, saving && styles.buttonDisabled]} onPress={handleSave} disabled={saving}>
             <ThemedText style={[styles.buttonText, { color: primaryText }]}>{saving ? 'Saving...' : 'Save Bank Account'}</ThemedText>
@@ -136,15 +179,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 12,
     gap: 8,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  input: {
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 12,
   },
   button: {
     borderRadius: 10,

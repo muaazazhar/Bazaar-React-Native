@@ -7,19 +7,34 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useGetAllOrdersQuery, useUpdateOrderStatusMutation } from '@/store/api/ordersApi';
+import { getApiErrorMessage } from '@/utils/apiError';
 
 export default function AdminOrdersScreen() {
   const [busy, setBusy] = useState(false);
-  const { data: orders = [], isLoading, refetch } = useGetAllOrdersQuery();
+  const [actionError, setActionError] = useState<string | null>(null);
+  const { data: orders = [], isLoading, isError, error, refetch } = useGetAllOrdersQuery();
   const [updateOrderStatus] = useUpdateOrderStatusMutation();
 
   const borderColor = useThemeColor({}, 'border');
   const surface = useThemeColor({}, 'surface');
+  const danger = useThemeColor({}, 'danger');
+  const muted = useThemeColor({}, 'muted');
 
-  const handleUpdateOrderStatus = async (orderId: string, status: 'pending' | 'processing' | 'fulfilled' | 'cancelled') => {
+  const loadError = isError
+    ? getApiErrorMessage(error, 'Could not load orders.')
+    : null;
+
+  const handleUpdateOrderStatus = async (
+    orderId: string,
+    status: 'pending' | 'processing' | 'fulfilled' | 'cancelled',
+  ) => {
     setBusy(true);
+    setActionError(null);
     try {
       await updateOrderStatus({ id: orderId, status }).unwrap();
+    } catch (err) {
+      const message = getApiErrorMessage(err, 'Could not update order status.');
+      setActionError(message);
     } finally {
       setBusy(false);
     }
@@ -29,10 +44,15 @@ export default function AdminOrdersScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <ScreenHeader title="Admin Orders" />
+        {loadError ? <ThemedText style={{ color: danger }}>{loadError}</ThemedText> : null}
+        {actionError ? <ThemedText style={{ color: danger }}>{actionError}</ThemedText> : null}
         <Pressable style={[styles.secondaryButton, { borderColor }]} onPress={refetch}>
-          <ThemedText>Refresh Orders</ThemedText>
+          <ThemedText>{isLoading ? 'Refreshing...' : 'Refresh Orders'}</ThemedText>
         </Pressable>
         {isLoading ? <ActivityIndicator /> : null}
+        {!isLoading && !loadError && orders.length === 0 ? (
+          <ThemedText style={{ color: muted }}>No orders yet.</ThemedText>
+        ) : null}
         {orders.map((order) => (
           <ThemedView key={String(order.id)} style={[styles.card, { borderColor, backgroundColor: surface }]}>
             <ThemedText type="defaultSemiBold">Order #{order.id}</ThemedText>
