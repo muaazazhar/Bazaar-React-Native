@@ -8,6 +8,7 @@ import { MAX_IMAGE_SIZE_LABEL } from '@/utils/imageUpload';
 type ImagePickerFieldProps = {
   label: string;
   onPress: () => void;
+  onRemove?: () => void;
   imageUri?: string | null;
   imageError?: string | null;
   disabled?: boolean;
@@ -19,6 +20,7 @@ type ImagePickerFieldProps = {
 export function ImagePickerField({
   label,
   onPress,
+  onRemove,
   imageUri,
   imageError,
   disabled,
@@ -55,7 +57,17 @@ export function ImagePickerField({
         <ThemedText style={[styles.sizeHint, { color: danger }]}>{imageError}</ThemedText>
       ) : null}
       {imageUri ? (
-        <RemoteImage uri={imageUri} style={previewStyle} recyclingKey={recyclingKey ?? imageUri} />
+        <>
+          <RemoteImage uri={imageUri} style={previewStyle} recyclingKey={recyclingKey ?? imageUri} />
+          {onRemove ? (
+            <Pressable
+              style={[styles.removeButton, { borderColor: danger }]}
+              onPress={onRemove}
+              disabled={disabled}>
+              <ThemedText style={{ color: danger }}>Remove image</ThemedText>
+            </Pressable>
+          ) : null}
+        </>
       ) : null}
     </>
   );
@@ -82,5 +94,12 @@ const styles = StyleSheet.create({
   },
   disabled: {
     opacity: 0.6,
+  },
+  removeButton: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 10,
+    alignItems: 'center',
+    alignSelf: 'flex-start',
   },
 });

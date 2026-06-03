@@ -320,6 +320,13 @@ export default function AdminProductsScreen() {
           <ImagePickerField
             label="Select Product Image"
             onPress={() => pickImage(setNewImageUri, setNewImageError)}
+            onRemove={() => {
+              setNewImageUri(null);
+              setNewImageError(null);
+              if (createFieldErrors.image) {
+                setCreateFieldErrors((p) => ({ ...p, image: undefined }));
+              }
+            }}
             imageUri={newImageUri}
             imageError={newImageError ?? createFieldErrors.image}
             disabled={busy}
@@ -429,6 +436,10 @@ export default function AdminProductsScreen() {
               label="Select New Image (optional)"
               variant="secondary"
               onPress={() => pickImage(setEditImageUri, setEditImageError)}
+              onRemove={() => {
+                setEditImageUri(null);
+                setEditImageError(null);
+              }}
               imageUri={editImageUri}
               imageError={editImageError}
               disabled={busy}

@@ -29,6 +29,13 @@ import {
   clearStoredAuthSession,
   persistAuthSession,
 } from "@/store/authStorage";
+import { savePendingEmail } from "@/store/verificationStorage";
+import {
+  getEmailFromApiError,
+  getResendCooldownSeconds,
+  isEmailNotVerifiedError,
+} from "@/utils/authApiErrors";
+import { routeAfterAuth } from "@/utils/authRouting";
 import { useAppDispatch } from "@/store/hooks";
 import { setCredentials } from "@/store/slices/authSlice";
 import type { User } from "@/types/domain";
@@ -139,6 +146,21 @@ export default function LoginScreen() {
     process.env.EXPO_PUBLIC_ENABLE_GOOGLE_AUTH?.trim()?.toLowerCase() !==
     "false";
 
+  const goToVerifyEmail = async (
+    targetEmail: string,
+    resendAvailableInSeconds: number,
+    pendingPassword?: string,
+  ) => {
+    await savePendingEmail(targetEmail, pendingPassword);
+    router.replace({
+      pathname: "/verify-email",
+      params: {
+        email: targetEmail,
+        resendIn: String(resendAvailableInSeconds),
+      },
+    });
+  };
+
   const finishLogin = async (loginData: {
     user: User;
     access_token: string;
@@ -153,7 +175,7 @@ export default function LoginScreen() {
       user: loginData.user,
       token: loginData.access_token,
     });
-    router.replace("/");
+    routeAfterAuth(loginData.user);
   };
 
   const handleSubmit = async () => {
@@ -185,11 +207,19 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       if (isRegisterMode) {
-        await registerMutation({
+        const registered = await registerMutation({
           username: username.trim(),
           email: email.trim(),
           password,
         }).unwrap();
+        if (registered.requiresVerification) {
+          await goToVerifyEmail(
+            registered.email,
+            registered.resendAvailableInSeconds,
+            password,
+          );
+          return;
+        }
         const loginData = await loginMutation({
           identifier: username.trim(),
           password,
@@ -204,6 +234,17 @@ export default function LoginScreen() {
       }
     } catch (err) {
       await clearStoredAuthSession();
+      if (!isRegisterMode && isEmailNotVerifiedError(err)) {
+        const targetEmail = getEmailFromApiError(err) ?? (identifier.includes("@") ? identifier.trim() : "");
+        if (targetEmail) {
+          await goToVerifyEmail(
+            targetEmail,
+            getResendCooldownSeconds(err),
+            password,
+          );
+          return;
+        }
+      }
       setError(
         getApiErrorMessage(
           err,
@@ -446,9 +487,18 @@ export default function LoginScreen() {
                 (loading || googleLoading) && styles.buttonDisabled,
               ]}
               onPress={() => {
-                setIsRegisterMode((prev) => !prev);
+                const nextMode = !isRegisterMode;
+                setIsRegisterMode(nextMode);
+                setPassword("");
+                setShowPassword(false);
                 setFieldErrors({});
                 setError("");
+                if (nextMode) {
+                  setIdentifier("");
+                } else {
+                  setUsername("");
+                  setEmail("");
+                }
               }}
               disabled={loading || googleLoading}
             >

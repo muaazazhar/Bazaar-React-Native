@@ -13,6 +13,7 @@ export const FIELD_LIMITS = {
   username: 50,
   email: 150,
   password: 128,
+  verificationCode: 6,
 } as const;
 
 export function isEmpty(value: string): boolean {
