@@ -9,6 +9,7 @@ export const FIELD_LIMITS = {
   iban: 34,
   address: 300,
   paymentReference: 100,
+  deliveryCharge: 8,
   identifier: 150,
   username: 50,
   email: 150,
@@ -33,6 +34,17 @@ export function validatePrice(value: string): string | null {
   const price = Number(value);
   if (!Number.isFinite(price) || price <= 0) {
     return 'Price must be a positive number.';
+  }
+  return null;
+}
+
+/** Required when store uses fixed delivery (not free delivery). Must be > 0. */
+export function validateDeliveryCharge(value: string): string | null {
+  const required = validateRequired(value, 'Delivery charge');
+  if (required) return required;
+  const charge = Number(value);
+  if (!Number.isFinite(charge) || charge <= 0) {
+    return 'Delivery charge must be greater than zero.';
   }
   return null;
 }

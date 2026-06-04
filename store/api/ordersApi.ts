@@ -1,46 +1,46 @@
 import { baseApi } from '@/store/api/baseApi';
 import type { Order, PaymentMethod, WalletProvider } from '@/types/domain';
+import { normalizeOrder } from '@/utils/orderDisplay';
+import { mapArrayResponse } from '@/utils/rtkResponse';
+import { normalizeReceipt, type Receipt } from '@/utils/receipt';
 
-type ReceiptItem = {
-  productId: number;
-  name: string;
-  unitPrice: number;
-  quantity: number;
-  lineTotal: number;
+export type { Receipt };
+
+export type OrderStatus = 'pending' | 'processing' | 'fulfilled' | 'cancelled';
+
+export type PlaceOrderJsonBody = {
+  address: string;
+  items: Array<{ productId: string | number; quantity: number }>;
+  paymentMethod: PaymentMethod;
+  walletProvider?: WalletProvider;
+  paymentReference?: string;
 };
 
-export type Receipt = {
-  receiptNumber: string;
-  orderId: number;
-  status: string;
-  createdAt: string;
-  deliveryAddress: string;
-  items: ReceiptItem[];
-  totalAmount: number;
-  customer: {
-    id: number;
-    email: string;
-  };
-};
+export type PlaceOrderRequest =
+  | { kind: 'json'; body: PlaceOrderJsonBody }
+  | { kind: 'formData'; formData: FormData };
 
 export const ordersApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
-    placeOrder: builder.mutation<Order, {
-      address: string;
-      items: Array<{ productId: number; quantity: number }>;
-      paymentMethod: PaymentMethod;
-      walletProvider?: WalletProvider;
-      paymentReference?: string;
-    }>({
-      query: (body) => ({
-        url: '/api/orders',
-        method: 'POST',
-        body,
-      }),
+    placeOrder: builder.mutation<Order, PlaceOrderRequest>({
+      query: (request) =>
+        request.kind === 'formData'
+          ? {
+              url: '/api/orders',
+              method: 'POST',
+              body: request.formData,
+            }
+          : {
+              url: '/api/orders',
+              method: 'POST',
+              body: request.body,
+            },
+      transformResponse: (response: unknown) => normalizeOrder(response),
       invalidatesTags: [{ type: 'Order', id: 'LIST' }],
     }),
     getMyOrders: builder.query<Order[], void>({
       query: () => '/api/orders/my',
+      transformResponse: (response: unknown) => mapArrayResponse(response, normalizeOrder),
       providesTags: (result) =>
         result
           ? [{ type: 'Order', id: 'LIST' }, ...result.map((order) => ({ type: 'Order' as const, id: String(order.id) }))]
@@ -48,17 +48,28 @@ export const ordersApi = baseApi.injectEndpoints({
     }),
     getAllOrders: builder.query<Order[], void>({
       query: () => '/api/orders',
+      transformResponse: (response: unknown) => mapArrayResponse(response, normalizeOrder),
       providesTags: (result) =>
         result
           ? [{ type: 'Order', id: 'LIST' }, ...result.map((order) => ({ type: 'Order' as const, id: String(order.id) }))]
           : [{ type: 'Order', id: 'LIST' }],
     }),
-    updateOrderStatus: builder.mutation<Order, { id: string; status: 'pending' | 'processing' | 'fulfilled' | 'cancelled' }>({
-      query: ({ id, status }) => ({
-        url: `/api/orders/${id}`,
-        method: 'PATCH',
-        body: { status },
-      }),
+    updateOrderStatus: builder.mutation<
+      Order,
+      { id: string; status: OrderStatus; cancellationReason?: string }
+    >({
+      query: ({ id, status, cancellationReason }) => {
+        const body: { status: OrderStatus; cancellationReason?: string } = { status };
+        if (status === 'cancelled') {
+          body.cancellationReason = (cancellationReason ?? '').trim();
+        }
+        return {
+          url: `/api/orders/${id}`,
+          method: 'PATCH',
+          body,
+        };
+      },
+      transformResponse: (response: unknown) => normalizeOrder(response),
       invalidatesTags: (_result, _error, arg) => [
         { type: 'Order', id: 'LIST' },
         { type: 'Order', id: arg.id },
@@ -67,6 +78,7 @@ export const ordersApi = baseApi.injectEndpoints({
     }),
     getReceipt: builder.query<Receipt, { id: string }>({
       query: ({ id }) => `/api/orders/${id}/receipt`,
+      transformResponse: (response: unknown) => normalizeReceipt(response),
       providesTags: (_result, _error, arg) => [{ type: 'Receipt', id: arg.id }],
     }),
   }),

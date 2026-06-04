@@ -51,6 +51,11 @@ function toResendResponse(response: unknown): ResendVerificationResponse {
 
 export const authApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
+    getMe: builder.query<User, void>({
+      query: () => '/api/auth/me',
+      transformResponse: (response: unknown) => normalizeUser(response),
+      providesTags: [{ type: 'Auth', id: 'ME' }],
+    }),
     register: builder.mutation<RegisterResponse, { email: string; username: string; password: string }>({
       query: (body) => ({
         url: '/api/auth/register',
@@ -98,6 +103,8 @@ export const authApi = baseApi.injectEndpoints({
 });
 
 export const {
+  useGetMeQuery,
+  useLazyGetMeQuery,
   useRegisterMutation,
   useLoginMutation,
   useGoogleExchangeMutation,

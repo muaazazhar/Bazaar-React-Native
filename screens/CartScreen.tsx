@@ -1,17 +1,28 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
+import { useMemo } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { OrderTotalsBreakdown } from "@/components/order-totals-breakdown";
 import { RemoteImage } from "@/components/remote-image";
 import { ScreenHeader } from "@/components/screen-header";
+import { useGetStoreSettingsQuery } from "@/store/api/storeSettingsApi";
+import { getCheckoutTotals } from "@/utils/delivery";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { useCart } from "@/context/CartContext";
 import { useThemeColor } from "@/hooks/use-theme-color";
 
+import { getLineTotals } from "@/utils/cartPricing";
+
 export default function CartScreen() {
-  const { cart, total, clearCart, removeFromCart, increaseQuantity, decreaseQuantity } = useCart();
+  const { cart, total, savings, clearCart, removeFromCart, increaseQuantity, decreaseQuantity } = useCart();
+  const { data: storeSettings } = useGetStoreSettingsQuery();
+  const checkoutTotals = useMemo(
+    () => getCheckoutTotals(total, storeSettings),
+    [total, storeSettings],
+  );
 
   const borderColor = useThemeColor({}, "border");
   const surface = useThemeColor({}, "surface");
@@ -20,9 +31,6 @@ export default function CartScreen() {
   const danger = useThemeColor({}, "danger");
   const muted = useThemeColor({}, "muted");
   const surfaceAlt = useThemeColor({}, "surfaceAlt");
-
-  const estimatedOriginalTotal = Math.round(total * 1.08);
-  const savings = Math.max(0, estimatedOriginalTotal - total);
 
   return (
     <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
@@ -43,13 +51,10 @@ export default function CartScreen() {
             </ThemedView>
           ) : (
             cart.map((item, idx) => {
-              const price = Number(item.product.price) || 0;
-              const discount = Number(item.product.discountPercent ?? 0);
-              const discounted = Number.isFinite(discount) && discount > 0
-                ? price * (1 - Math.min(discount, 100) / 100)
-                : price;
-              const lineTotal = Math.round(discounted * item.quantity);
-              const original = Math.round(price * item.quantity);
+              const { lineTotal, originalLineTotal, hasDiscount } = getLineTotals(
+                item.product,
+                item.quantity,
+              );
               return (
                 <ThemedView
                   key={`${item.product.id}-${idx}`}
@@ -64,8 +69,8 @@ export default function CartScreen() {
                     <ThemedText numberOfLines={1} style={styles.itemName}>{item.product.name}</ThemedText>
                     <View style={styles.priceRow}>
                       <ThemedText type="defaultSemiBold">Rs. {lineTotal.toLocaleString()}</ThemedText>
-                      {discount > 0 ? (
-                        <ThemedText style={[styles.strikePrice, { color: muted }]}>Rs. {original.toLocaleString()}</ThemedText>
+                      {hasDiscount ? (
+                        <ThemedText style={[styles.strikePrice, { color: muted }]}>Rs. {originalLineTotal.toLocaleString()}</ThemedText>
                       ) : null}
                     </View>
                   </View>
@@ -92,24 +97,37 @@ export default function CartScreen() {
 
           {cart.length > 0 ? (
             <>
-              <View style={[styles.savingsStrip, { backgroundColor: surfaceAlt }]}>
-                <ThemedText style={[styles.savingsText, { color: primary }]}>
-                  YOU&apos;RE SAVING RS. {savings.toLocaleString()}
-                </ThemedText>
-                <ThemedText style={{ color: primary }}>Add more items</ThemedText>
-              </View>
-              <View style={[styles.deliveryStrip, { backgroundColor: surfaceAlt }]}>
-                <ThemedText>Congratulations! Enjoy free delivery on this order</ThemedText>
-              </View>
+              {savings > 0 ? (
+                <View style={[styles.savingsStrip, { backgroundColor: surfaceAlt }]}>
+                  <ThemedText style={[styles.savingsText, { color: primary }]}>
+                    YOU&apos;RE SAVING RS. {savings.toLocaleString()}
+                  </ThemedText>
+                </View>
+              ) : null}
+              {checkoutTotals.freeDelivery ? (
+                <View style={[styles.deliveryStrip, { backgroundColor: surfaceAlt }]}>
+                  <ThemedText>Congratulations! Enjoy free delivery on this order</ThemedText>
+                </View>
+              ) : checkoutTotals.deliveryCharge > 0 ? (
+                <View style={[styles.deliveryStrip, { backgroundColor: surfaceAlt }]}>
+                  <ThemedText>
+                    Delivery charge: Rs. {checkoutTotals.deliveryCharge.toLocaleString()} (added at checkout)
+                  </ThemedText>
+                </View>
+              ) : null}
             </>
           ) : null}
         </ScrollView>
 
         <View style={[styles.footer, { borderTopColor: borderColor, backgroundColor: surface }]}>
-          <View style={styles.totalRow}>
-            <ThemedText style={styles.totalLabel}>Total amount</ThemedText>
-            <ThemedText type="defaultSemiBold" style={styles.totalValue}>Rs. {total.toLocaleString()}</ThemedText>
-          </View>
+          {cart.length > 0 ? (
+            <OrderTotalsBreakdown totals={checkoutTotals} compact />
+          ) : (
+            <View style={styles.totalRow}>
+              <ThemedText style={styles.totalLabel}>Total amount</ThemedText>
+              <ThemedText type="defaultSemiBold" style={styles.totalValue}>Rs. 0</ThemedText>
+            </View>
+          )}
           <Pressable
             style={[
               styles.checkoutButton,

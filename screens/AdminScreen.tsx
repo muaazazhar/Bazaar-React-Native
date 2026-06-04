@@ -1,13 +1,14 @@
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ScreenHeader } from '@/components/screen-header';
 import { ThemedText } from '@/components/themed-text';
 import { useThemeColor } from '@/hooks/use-theme-color';
-import { clearStoredAuthSession } from '@/store/authStorage';
+import { useSessionBusy } from '@/hooks/use-session-busy';
+import { performSessionLogout } from '@/store/authSession';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
-import { logout } from '@/store/slices/authSlice';
 
 export default function AdminScreen() {
   const user = useAppSelector((state) => state.auth.user);
@@ -19,10 +20,18 @@ export default function AdminScreen() {
   const primaryText = useThemeColor({}, 'primaryText');
   const muted = useThemeColor({}, 'muted');
 
+  const [loggingOut, setLoggingOut] = useState(false);
+  const sessionBusy = useSessionBusy();
+  const uiLocked = loggingOut || sessionBusy;
+
   const handleLogout = async () => {
-    dispatch(logout());
-    await clearStoredAuthSession();
-    router.replace('/login');
+    if (uiLocked) return;
+    setLoggingOut(true);
+    try {
+      await performSessionLogout(dispatch);
+    } finally {
+      setLoggingOut(false);
+    }
   };
 
   return (
@@ -49,16 +58,20 @@ export default function AdminScreen() {
           <ThemedText type="defaultSemiBold">Manage Orders</ThemedText>
           <ThemedText style={[styles.smallText, { color: muted }]}>View and update order statuses in a separate screen.</ThemedText>
         </Pressable>
-        <Pressable style={[styles.quickActionCard, { borderColor, backgroundColor: surface }]} onPress={() => router.push('/admin-payment')}>
-          <ThemedText type="defaultSemiBold">Payment Settings</ThemedText>
-          <ThemedText style={[styles.smallText, { color: muted }]}>Update bank account, Easypaisa and JazzCash details.</ThemedText>
+        <Pressable style={[styles.quickActionCard, { borderColor, backgroundColor: surface }]} onPress={() => router.push('/admin-store-settings')}>
+          <ThemedText type="defaultSemiBold">Store Settings</ThemedText>
+          <ThemedText style={[styles.smallText, { color: muted }]}>Payments, delivery, and popular products on the home screen.</ThemedText>
         </Pressable>
 
-        <Pressable style={[styles.button, { backgroundColor: primary }]} onPress={() => router.replace('/')}>
-          <ThemedText style={[styles.buttonText, { color: primaryText }]}>Go to Landing Route</ThemedText>
-        </Pressable>
-        <Pressable style={[styles.secondaryButton, { borderColor }]} onPress={handleLogout}>
-          <ThemedText>Logout</ThemedText>
+        <Pressable
+          style={[styles.secondaryButton, { borderColor }, uiLocked && { opacity: 0.6 }]}
+          onPress={handleLogout}
+          disabled={uiLocked}>
+          {loggingOut ? (
+            <ActivityIndicator />
+          ) : (
+            <ThemedText>{sessionBusy ? 'Finishing tasks…' : 'Logout'}</ThemedText>
+          )}
         </Pressable>
       </ScrollView>
     </SafeAreaView>

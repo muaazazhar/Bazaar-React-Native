@@ -5,7 +5,12 @@ import 'react-native-reanimated';
 import { Provider } from 'react-redux';
 
 import { AuthBootstrap } from '@/components/auth-bootstrap';
+import { AuthRouteTracker } from '@/components/auth-route-tracker';
+import { NotificationHost } from '@/components/notification-host';
+import { SessionBusyOverlay } from '@/components/session-busy-overlay';
+import { OrderStatusWatcher } from '@/components/order-status-watcher';
 import { CartProvider } from '@/context/CartContext';
+import { NotificationProvider } from '@/context/NotificationContext';
 import { ThemePreferenceProvider, useThemePreference } from '@/context/ThemePreferenceContext';
 import { store } from '@/store';
 
@@ -19,7 +24,13 @@ export default function RootLayout() {
       <AuthBootstrap />
       <CartProvider>
         <ThemePreferenceProvider>
-          <RootNavigator />
+          <NotificationProvider>
+            <AuthRouteTracker />
+            <OrderStatusWatcher />
+            <RootNavigator />
+            <NotificationHost />
+            <SessionBusyOverlay />
+          </NotificationProvider>
         </ThemePreferenceProvider>
       </CartProvider>
     </Provider>
@@ -40,9 +51,11 @@ function RootNavigator() {
         <Stack.Screen name="admin-products" options={{ headerShown: false }} />
         <Stack.Screen name="admin-categories" options={{ headerShown: false }} />
         <Stack.Screen name="admin-orders" options={{ headerShown: false }} />
-        <Stack.Screen name="admin-payment" options={{ headerShown: false }} />
+        <Stack.Screen name="admin-store-settings" options={{ headerShown: false }} />
         <Stack.Screen name="checkout" options={{ headerShown: false }} />
+        <Stack.Screen name="bank-transfer" options={{ headerShown: false }} />
         <Stack.Screen name="receipt" options={{ headerShown: false }} />
+        <Stack.Screen name="category/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
       </Stack>
       <StatusBar style={resolvedTheme === 'dark' ? 'light' : 'dark'} />

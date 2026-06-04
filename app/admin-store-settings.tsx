@@ -1,9 +1,9 @@
 import { Redirect } from 'expo-router';
 
-import AdminCategoriesScreen from '@/screens/AdminCategoriesScreen';
+import AdminStoreSettingsScreen from '@/screens/AdminStoreSettingsScreen';
 import { useAppSelector } from '@/store/hooks';
 
-export default function AdminCategoriesRoute() {
+export default function AdminStoreSettingsRoute() {
   const user = useAppSelector((state) => state.auth.user);
   const hydrated = useAppSelector((state) => state.auth.hydrated);
 
@@ -19,5 +19,5 @@ export default function AdminCategoriesRoute() {
     return <Redirect href="/(tabs)" />;
   }
 
-  return <AdminCategoriesScreen />;
+  return <AdminStoreSettingsScreen />;
 }

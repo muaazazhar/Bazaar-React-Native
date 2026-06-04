@@ -1,29 +1,38 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useColorScheme } from "@/hooks/use-color-scheme";
 
-const THEME_STORAGE_KEY = 'store_theme_preference';
+const THEME_STORAGE_KEY = "store_theme_preference";
 
-export type ThemePreference = 'system' | 'light' | 'dark';
+export type ThemePreference = "system" | "light" | "dark";
 
 type ThemePreferenceContextType = {
   preference: ThemePreference;
-  resolvedTheme: 'light' | 'dark';
+  resolvedTheme: "light" | "dark";
   setPreference: (value: ThemePreference) => void;
 };
 
-const ThemePreferenceContext = createContext<ThemePreferenceContextType | undefined>(undefined);
+const ThemePreferenceContext = createContext<
+  ThemePreferenceContextType | undefined
+>(undefined);
 
 export function ThemePreferenceProvider({ children }: { children: ReactNode }) {
-  const systemTheme = useColorScheme() ?? 'light';
-  const [preference, setPreferenceState] = useState<ThemePreference>('system');
+  const systemTheme = useColorScheme() ?? "light";
+  const [preference, setPreferenceState] = useState<ThemePreference>("system");
 
   useEffect(() => {
     const loadPreference = async () => {
       try {
         const saved = await AsyncStorage.getItem(THEME_STORAGE_KEY);
-        if (saved === 'system' || saved === 'light' || saved === 'dark') {
+        if (saved === "system" || saved === "light" || saved === "dark") {
           setPreferenceState(saved);
         }
       } catch {
@@ -44,7 +53,8 @@ export function ThemePreferenceProvider({ children }: { children: ReactNode }) {
     })();
   };
 
-  const resolvedTheme = preference === 'system' ? systemTheme : preference;
+  const resolvedTheme: "light" | "dark" =
+    preference === "system" ? systemTheme : preference;
 
   const value = useMemo(
     () => ({
@@ -52,16 +62,22 @@ export function ThemePreferenceProvider({ children }: { children: ReactNode }) {
       resolvedTheme,
       setPreference,
     }),
-    [preference, resolvedTheme]
+    [preference, resolvedTheme, systemTheme],
   );
 
-  return <ThemePreferenceContext.Provider value={value}>{children}</ThemePreferenceContext.Provider>;
+  return (
+    <ThemePreferenceContext.Provider value={value}>
+      {children}
+    </ThemePreferenceContext.Provider>
+  );
 }
 
 export function useThemePreference() {
   const context = useContext(ThemePreferenceContext);
   if (!context) {
-    throw new Error('useThemePreference must be used inside ThemePreferenceProvider');
+    throw new Error(
+      "useThemePreference must be used inside ThemePreferenceProvider",
+    );
   }
   return context;
 }

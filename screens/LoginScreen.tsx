@@ -4,6 +4,7 @@ import * as WebBrowser from "expo-web-browser";
 import { useState } from "react";
 import {
   ActivityIndicator,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -12,10 +13,11 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { ApiErrorBanner } from "@/components/api-feedback";
 import { ValidatingTextInput } from "@/components/validating-text-input";
 import { ScreenHeader } from "@/components/screen-header";
 import { FIELD_LIMITS, validateEmail, validateRequired } from "@/constants/fieldLimits";
-import { getApiErrorMessage } from "@/utils/apiError";
+import { getApiErrorDetails, logApiError } from "@/utils/apiError";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { useThemeColor } from "@/hooks/use-theme-color";
@@ -135,7 +137,6 @@ export default function LoginScreen() {
   const primary = useThemeColor({}, "primary");
   const primaryText = useThemeColor({}, "primaryText");
   const muted = useThemeColor({}, "muted");
-  const danger = useThemeColor({}, "danger");
   const googleAuthPath =
     process.env.EXPO_PUBLIC_GOOGLE_AUTH_START_PATH?.trim() || "/auth/google";
   const googleAuthBaseUrl =
@@ -245,14 +246,14 @@ export default function LoginScreen() {
           return;
         }
       }
-      setError(
-        getApiErrorMessage(
-          err,
-          isRegisterMode
-            ? "Signup failed. Please try again."
-            : "Login failed. Please check your credentials.",
-        ),
+      logApiError(isRegisterMode ? "POST /api/auth/register" : "POST /api/auth/login", err);
+      const details = getApiErrorDetails(
+        err,
+        isRegisterMode
+          ? "Signup failed. Please try again."
+          : "Login failed. Please check your credentials.",
       );
+      setError(details.message);
     } finally {
       setLoading(false);
     }
@@ -340,10 +341,12 @@ export default function LoginScreen() {
     } catch (err) {
       if (err instanceof Error && err.message.includes("Timed out")) {
         setError(
-          "Google callback received, but backend exchange timed out. If using a physical phone, replace localhost in frontend env with your computer LAN IP.",
+          'Google callback received, but backend exchange timed out. If using a physical phone, replace localhost in frontend env with your computer LAN IP.',
         );
       } else {
-        setError(getApiErrorMessage(err, "Google sign-in failed. Please try again."));
+        logApiError("POST /api/auth/google/exchange", err);
+        const details = getApiErrorDetails(err, "Google sign-in failed. Please try again.");
+        setError(details.message);
       }
     } finally {
       setGoogleLoading(false);
@@ -366,8 +369,10 @@ export default function LoginScreen() {
           keyboardDismissMode={
             Platform.OS === "ios" ? "interactive" : "on-drag"
           }
+          automaticallyAdjustKeyboardInsets
           showsVerticalScrollIndicator={false}
         >
+          <Pressable style={styles.page} onPress={Keyboard.dismiss} accessible={false}>
           <ThemedView style={[styles.container, { backgroundColor }]}>
             <ScreenHeader
               title={isRegisterMode ? "Create Account" : "Login"}
@@ -458,11 +463,7 @@ export default function LoginScreen() {
                 {showPassword ? "Hide Password" : "Show Password"}
               </ThemedText>
             </Pressable>
-            {!!error && (
-              <ThemedText style={[styles.error, { color: danger }]}>
-                {error}
-              </ThemedText>
-            )}
+            <ApiErrorBanner title="Sign in" message={error || null} />
             <Pressable
               style={[
                 styles.button,
@@ -522,6 +523,7 @@ export default function LoginScreen() {
               </Pressable>
             ) : null}
           </ThemedView>
+          </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

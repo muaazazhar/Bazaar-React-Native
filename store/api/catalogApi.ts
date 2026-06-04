@@ -1,127 +1,13 @@
 import { baseApi } from '@/store/api/baseApi';
-import { getApiBaseUrl } from '@/services/baseUrl';
 import type { Category, Product } from '@/types/domain';
-
-const apiBaseUrl = getApiBaseUrl();
-
-function normalizeImagePath(path: string): string {
-  // Backward-compatible fix for legacy backend responses missing /api prefix.
-  if (/^\/?(products|categories)\/.+\/image$/i.test(path)) {
-    return path.startsWith('/') ? `/api${path}` : `/api/${path}`;
-  }
-  return path;
-}
-
-function bytesToBase64(bytes: number[]): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
-  let output = '';
-  for (let i = 0; i < bytes.length; i += 3) {
-    const a = bytes[i] ?? 0;
-    const b = bytes[i + 1] ?? 0;
-    const c = bytes[i + 2] ?? 0;
-    const triple = (a << 16) | (b << 8) | c;
-
-    output += chars[(triple >> 18) & 63];
-    output += chars[(triple >> 12) & 63];
-    output += i + 1 < bytes.length ? chars[(triple >> 6) & 63] : '=';
-    output += i + 2 < bytes.length ? chars[triple & 63] : '=';
-  }
-  return output;
-}
-
-function blobToDataUri(blob: unknown, mime: unknown): string | null {
-  const mimeType = typeof mime === 'string' && mime.trim() ? mime.trim() : 'image/jpeg';
-
-  // Backend may already send base64 string
-  if (typeof blob === 'string' && blob.trim()) {
-    const value = blob.trim();
-    if (value.startsWith('data:image/')) return value;
-    return `data:${mimeType};base64,${value}`;
-  }
-
-  // Node Buffer JSON form: { type: 'Buffer', data: number[] }
-  if (
-    blob &&
-    typeof blob === 'object' &&
-    'type' in (blob as Record<string, unknown>) &&
-    (blob as Record<string, unknown>).type === 'Buffer' &&
-    Array.isArray((blob as Record<string, unknown>).data)
-  ) {
-    const bytes = (blob as { data: number[] }).data;
-    if (!bytes.length) return null;
-    return `data:${mimeType};base64,${bytesToBase64(bytes)}`;
-  }
-
-  // Direct byte array form
-  if (Array.isArray(blob) && blob.length > 0 && typeof blob[0] === 'number') {
-    return `data:${mimeType};base64,${bytesToBase64(blob as number[])}`;
-  }
-
-  return null;
-}
-
-function toAbsoluteUrl(value: unknown): string | null {
-  if (typeof value !== 'string' || !value.trim()) return null;
-  const trimmed = normalizeImagePath(value.trim());
-  if (trimmed.startsWith('data:image/')) return trimmed;
-  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed;
-  const originMatch = apiBaseUrl.match(/^(https?:\/\/[^/]+)/);
-  const origin = originMatch?.[1] ?? apiBaseUrl;
-  return `${origin}${trimmed.startsWith('/') ? '' : '/'}${trimmed}`;
-}
-
-function normalizeCategory(raw: any): Category {
-  const imageFromBlob = blobToDataUri(
-    raw?.imageBlob ?? raw?.image_blob,
-    raw?.imageMime ?? raw?.image_mime
-  );
-  const imageValue =
-    imageFromBlob ??
-    raw?.imageUrl ??
-    raw?.image_url ??
-    raw?.image ??
-    raw?.imagePath ??
-    raw?.image_path ??
-    null;
-  return {
-    id: String(raw?.id ?? ''),
-    name: String(raw?.name ?? ''),
-    imageUrl: toAbsoluteUrl(imageValue),
-  };
-}
-
-function normalizeProduct(raw: any): Product {
-  const imageFromBlob = blobToDataUri(
-    raw?.imageBlob ?? raw?.image_blob,
-    raw?.imageMime ?? raw?.image_mime
-  );
-  const imageValue =
-    imageFromBlob ??
-    raw?.imageUrl ??
-    raw?.image_url ??
-    raw?.image ??
-    raw?.imagePath ??
-    raw?.image_path ??
-    null;
-  return {
-    id: raw?.id,
-    name: String(raw?.name ?? ''),
-    price: raw?.price ?? 0,
-    discountPercent: raw?.discountPercent ?? raw?.discount_percent ?? raw?.discount ?? null,
-    categoryId: raw?.categoryId ?? raw?.category_id ?? null,
-    category: raw?.category ? normalizeCategory(raw.category) : null,
-    imageUrl: toAbsoluteUrl(imageValue),
-  };
-}
+import { normalizeCategory, normalizeProduct } from '@/utils/catalogNormalize';
+import { mapArrayResponse } from '@/utils/rtkResponse';
 
 export const catalogApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
     getCategories: builder.query<Category[], void>({
       query: () => '/api/categories',
-      transformResponse: (response: unknown) => {
-        const payload = Array.isArray(response) ? response : [];
-        return payload.map(normalizeCategory);
-      },
+      transformResponse: (response: unknown) => mapArrayResponse(response, normalizeCategory),
       providesTags: (result) =>
         result
           ? [
@@ -163,14 +49,24 @@ export const catalogApi = baseApi.injectEndpoints({
     }),
     getProducts: builder.query<Product[], void>({
       query: () => '/api/products',
-      transformResponse: (response: unknown) => {
-        const payload = Array.isArray(response) ? response : [];
-        return payload.map(normalizeProduct);
-      },
+      transformResponse: (response: unknown) => mapArrayResponse(response, normalizeProduct),
       providesTags: (result) =>
         result
           ? [{ type: 'Product', id: 'LIST' }, ...result.map((product) => ({ type: 'Product' as const, id: String(product.id) }))]
           : [{ type: 'Product', id: 'LIST' }],
+    }),
+    getPopularProducts: builder.query<Product[], void>({
+      query: () => '/api/products/popular',
+      transformResponse: (response: unknown) => mapArrayResponse(response, normalizeProduct),
+      providesTags: [{ type: 'Product', id: 'POPULAR' }],
+    }),
+    getProductsByCategory: builder.query<Product[], { categoryId: string }>({
+      query: ({ categoryId }) => `/api/categories/${categoryId}/products`,
+      transformResponse: (response: unknown) => mapArrayResponse(response, normalizeProduct),
+      providesTags: (_result, _error, arg) => [
+        { type: 'Product', id: 'LIST' },
+        { type: 'Product', id: `CATEGORY-${arg.categoryId}` },
+      ],
     }),
     createProduct: builder.mutation<Product, FormData>({
       query: (body) => ({
@@ -179,7 +75,10 @@ export const catalogApi = baseApi.injectEndpoints({
         body,
       }),
       transformResponse: (response: unknown) => normalizeProduct(response),
-      invalidatesTags: [{ type: 'Product', id: 'LIST' }],
+      invalidatesTags: [
+        { type: 'Product', id: 'LIST' },
+        { type: 'Product', id: 'POPULAR' },
+      ],
     }),
     updateProduct: builder.mutation<Product, { id: string; body: FormData | { name?: string; price?: number; categoryId?: number } }>({
       query: ({ id, body }) => ({
@@ -190,6 +89,7 @@ export const catalogApi = baseApi.injectEndpoints({
       transformResponse: (response: unknown) => normalizeProduct(response),
       invalidatesTags: (_result, _error, arg) => [
         { type: 'Product', id: 'LIST' },
+        { type: 'Product', id: 'POPULAR' },
         { type: 'Product', id: arg.id },
       ],
     }),
@@ -200,6 +100,7 @@ export const catalogApi = baseApi.injectEndpoints({
       }),
       invalidatesTags: (_result, _error, arg) => [
         { type: 'Product', id: 'LIST' },
+        { type: 'Product', id: 'POPULAR' },
         { type: 'Product', id: arg.id },
       ],
     }),
@@ -212,6 +113,8 @@ export const {
   useUpdateCategoryMutation,
   useDeleteCategoryMutation,
   useGetProductsQuery,
+  useGetPopularProductsQuery,
+  useGetProductsByCategoryQuery,
   useCreateProductMutation,
   useUpdateProductMutation,
   useDeleteProductMutation,

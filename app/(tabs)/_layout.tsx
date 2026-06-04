@@ -1,6 +1,7 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
 
+import { AuthSessionValidator } from '@/components/auth-session-validator';
 import { HapticTab } from '@/components/haptic-tab';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { Colors } from '@/constants/theme';
@@ -12,6 +13,8 @@ export default function TabLayout() {
   const user = useAppSelector((state) => state.auth.user);
 
   return (
+    <>
+      {user?.role !== 'admin' ? <AuthSessionValidator /> : null}
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: Colors[resolvedTheme].tint,
@@ -58,5 +61,6 @@ export default function TabLayout() {
         }}
       />
     </Tabs>
+    </>
   );
 }

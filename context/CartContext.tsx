@@ -7,6 +7,7 @@ import {
 } from "react";
 
 import type { Product } from "@/types/domain";
+import { getProductDiscountedPrice } from "@/utils/cartPricing";
 
 type CartItem = {
   product: Product;
@@ -21,6 +22,7 @@ type CartContextType = {
   decreaseQuantity: (productId: string | number) => void;
   clearCart: () => void;
   total: number;
+  savings: number;
 };
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
@@ -75,24 +77,21 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setCart([]);
   };
 
-  const total = useMemo(
-    () =>
-      cart.reduce(
-        (sum, item) => {
-          const basePrice = typeof item.product.price === "string"
+  const { total, savings } = useMemo(() => {
+    return cart.reduce(
+      (acc, item) => {
+        const basePrice =
+          typeof item.product.price === "string"
             ? Number(item.product.price)
             : item.product.price;
-          const discount = Number(item.product.discountPercent ?? 0);
-          const effectivePrice =
-            Number.isFinite(discount) && discount > 0
-              ? basePrice * (1 - Math.min(discount, 100) / 100)
-              : basePrice;
-          return sum + effectivePrice * item.quantity;
-        },
-        0,
-      ),
-    [cart],
-  );
+        const discounted = getProductDiscountedPrice(item.product);
+        acc.total += discounted * item.quantity;
+        acc.savings += Math.max(0, (basePrice - discounted) * item.quantity);
+        return acc;
+      },
+      { total: 0, savings: 0 },
+    );
+  }, [cart]);
 
   const value = useMemo(
     () => ({
@@ -102,9 +101,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
       increaseQuantity,
       decreaseQuantity,
       clearCart,
-      total,
+      total: Math.round(total),
+      savings: Math.round(savings),
     }),
-    [cart, total],
+    [cart, total, savings],
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

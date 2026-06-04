@@ -1,30 +1,33 @@
 import { router } from 'expo-router';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useCallback } from 'react';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ApiErrorBanner } from '@/components/api-feedback';
+import { CatalogProductList } from '@/components/catalog-product-list';
+import { QueryLoadBody } from '@/components/query-load-body';
 import { RemoteImage } from '@/components/remote-image';
 import { ScreenHeader } from '@/components/screen-header';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { useCart } from '@/context/CartContext';
+import { useMergedQueryLoadState } from '@/hooks/use-query-load-state';
 import { useThemeColor } from '@/hooks/use-theme-color';
-import { useGetCategoriesQuery, useGetProductsQuery } from '@/store/api/catalogApi';
-import { getApiErrorMessage } from '@/utils/apiError';
+import { useGetCategoriesQuery, useGetPopularProductsQuery } from '@/store/api/catalogApi';
 
 export default function HomeScreen() {
-  const { cart, addToCart, increaseQuantity, decreaseQuantity } = useCart();
   const {
-    data: products = [],
+    data: popularProducts = [],
     isLoading: productsLoading,
     isFetching,
     isError: productsError,
     error: productsQueryError,
-    refetch,
-  } = useGetProductsQuery();
+    refetch: refetchPopular,
+  } = useGetPopularProductsQuery();
   const {
     data: categories = [],
     isError: categoriesError,
     error: categoriesQueryError,
+    refetch: refetchCategories,
   } = useGetCategoriesQuery();
 
   const borderColor = useThemeColor({}, 'border');
@@ -32,15 +35,29 @@ export default function HomeScreen() {
   const primary = useThemeColor({}, 'primary');
   const primaryText = useThemeColor({}, 'primaryText');
   const muted = useThemeColor({}, 'muted');
-  const danger = useThemeColor({}, 'danger');
+  const { errorMessage, showSpinner } = useMergedQueryLoadState({
+    queries: [
+      { isError: productsError, error: productsQueryError },
+      { isError: categoriesError, error: categoriesQueryError },
+    ],
+    fallback: 'Could not load store catalog.',
+    isLoading: productsLoading,
+  });
 
-  const catalogError =
-    productsError || categoriesError
-      ? getApiErrorMessage(
-          productsQueryError ?? categoriesQueryError,
-          'Could not load store catalog.',
-        )
-      : null;
+  const openCategory = useCallback(
+    (categoryId: string, categoryName: string) => {
+      router.push({
+        pathname: '/category/[id]',
+        params: { id: categoryId, name: categoryName },
+      });
+    },
+    [],
+  );
+
+  const refetchAll = useCallback(() => {
+    void refetchPopular();
+    void refetchCategories();
+  }, [refetchPopular, refetchCategories]);
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
@@ -54,67 +71,39 @@ export default function HomeScreen() {
 
         <View style={styles.sectionRow}>
           <ThemedText type="subtitle">Categories</ThemedText>
-          <Pressable onPress={refetch}>
+          <Pressable onPress={refetchAll}>
             <ThemedText type="link">{isFetching ? 'Refreshing...' : 'Refresh'}</ThemedText>
           </Pressable>
         </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoriesRow}>
           {categories.map((category) => (
-            <ThemedView key={category.id} style={[styles.categoryCard, { borderColor, backgroundColor: surface }]}>
-              {category.imageUrl ? (
-                <RemoteImage uri={category.imageUrl} style={styles.categoryImage} recyclingKey={`category-${category.id}`} />
-              ) : null}
-              <ThemedText style={styles.categoryName}>{category.name}</ThemedText>
-            </ThemedView>
+            <Pressable
+              key={category.id}
+              onPress={() => openCategory(String(category.id), category.name)}
+              style={({ pressed }) => [pressed && styles.pressed]}>
+              <ThemedView style={[styles.categoryCard, { borderColor, backgroundColor: surface }]}>
+                {category.imageUrl ? (
+                  <RemoteImage
+                    uri={category.imageUrl}
+                    style={styles.categoryImage}
+                    recyclingKey={`category-${category.id}`}
+                  />
+                ) : null}
+                <ThemedText style={styles.categoryName}>{category.name}</ThemedText>
+              </ThemedView>
+            </Pressable>
           ))}
         </ScrollView>
 
         <ThemedText type="subtitle">Popular products</ThemedText>
-        {catalogError ? <ThemedText style={{ color: danger }}>{catalogError}</ThemedText> : null}
-        {productsLoading ? <ActivityIndicator /> : null}
-        {products.map((product) => {
-          const cartItem = cart.find((item) => item.product.id === product.id);
-          const basePrice = Number(product.price) || 0;
-          const discount = Number(product.discountPercent ?? 0);
-          const discountedPrice =
-            Number.isFinite(discount) && discount > 0
-              ? Math.round(basePrice * (1 - Math.min(discount, 100) / 100))
-              : basePrice;
-          return (
-            <ThemedView key={String(product.id)} style={[styles.productCard, { borderColor, backgroundColor: surface }]}>
-              <View style={styles.productRow}>
-                {product.imageUrl ? (
-                  <RemoteImage uri={product.imageUrl} style={styles.productImage} recyclingKey={`product-${product.id}`} />
-                ) : null}
-                <View style={styles.productInfo}>
-                  <ThemedText type="defaultSemiBold">{product.name}</ThemedText>
-                  <View style={styles.priceRow}>
-                    <ThemedText>Rs {discountedPrice}</ThemedText>
-                    {discount > 0 ? (
-                      <ThemedText style={[styles.strikePrice, { color: muted }]}>Rs {basePrice}</ThemedText>
-                    ) : null}
-                  </View>
-                  <ThemedText style={{ color: muted }}>{product.category?.name ?? 'General'}</ThemedText>
-                </View>
-              </View>
-              {cartItem ? (
-                <View style={styles.qtyRow}>
-                  <Pressable style={[styles.qtyButton, { borderColor }]} onPress={() => decreaseQuantity(product.id)}>
-                    <ThemedText>-</ThemedText>
-                  </Pressable>
-                  <ThemedText>{cartItem.quantity}</ThemedText>
-                  <Pressable style={[styles.qtyButton, { borderColor }]} onPress={() => increaseQuantity(product.id)}>
-                    <ThemedText>+</ThemedText>
-                  </Pressable>
-                </View>
-              ) : (
-                <Pressable style={[styles.primaryButton, { backgroundColor: primary }]} onPress={() => addToCart(product)}>
-                  <ThemedText style={[styles.primaryButtonText, { color: primaryText }]}>Add to cart</ThemedText>
-                </Pressable>
-              )}
-            </ThemedView>
-          );
-        })}
+        <ApiErrorBanner
+          title="Could not load store"
+          message={errorMessage}
+          onRetry={refetchAll}
+        />
+        <QueryLoadBody isLoading={showSpinner} hasError={Boolean(errorMessage)}>
+          <CatalogProductList products={popularProducts} />
+        </QueryLoadBody>
 
         <Pressable style={[styles.primaryButton, { backgroundColor: primary }]} onPress={() => router.push('/(tabs)/cart')}>
           <ThemedText style={[styles.primaryButtonText, { color: primaryText }]}>Go to cart</ThemedText>
@@ -162,44 +151,8 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 16,
   },
-  productCard: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 10,
-    gap: 10,
-  },
-  productRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  productImage: {
-    width: 74,
-    height: 74,
-    borderRadius: 10,
-  },
-  productInfo: {
-    flex: 1,
-    gap: 3,
-  },
-  priceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  strikePrice: {
-    textDecorationLine: 'line-through',
-    fontSize: 13,
-  },
-  qtyRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  qtyButton: {
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+  pressed: {
+    opacity: 0.85,
   },
   primaryButton: {
     borderRadius: 10,

@@ -1,4 +1,5 @@
 import {
+  Keyboard,
   StyleSheet,
   TextInput,
   View,
@@ -11,6 +12,7 @@ import { useThemeColor } from '@/hooks/use-theme-color';
 
 type ValidatingTextInputProps = {
   label?: string;
+  optional?: boolean;
   value: string;
   onChangeText: (text: string) => void;
   maxLength: number;
@@ -23,10 +25,14 @@ type ValidatingTextInputProps = {
   secureTextEntry?: boolean;
   textContentType?: TextInputProps['textContentType'];
   editable?: boolean;
+  returnKeyType?: TextInputProps['returnKeyType'];
+  blurOnSubmit?: boolean;
+  onSubmitEditing?: TextInputProps['onSubmitEditing'];
 };
 
 export function ValidatingTextInput({
   label,
+  optional = false,
   value,
   onChangeText,
   maxLength,
@@ -39,7 +45,18 @@ export function ValidatingTextInput({
   secureTextEntry,
   textContentType,
   editable = true,
+  returnKeyType,
+  blurOnSubmit,
+  onSubmitEditing,
 }: ValidatingTextInputProps) {
+  const resolvedReturnKeyType = returnKeyType ?? (multiline ? 'default' : 'done');
+  const resolvedBlurOnSubmit = blurOnSubmit ?? !multiline;
+  const handleSubmitEditing: TextInputProps['onSubmitEditing'] = (event) => {
+    onSubmitEditing?.(event);
+    if (!multiline) {
+      Keyboard.dismiss();
+    }
+  };
   const borderColor = useThemeColor({}, 'border');
   const inputBackground = useThemeColor({}, 'inputBackground');
   const inputText = useThemeColor({}, 'inputText');
@@ -51,7 +68,14 @@ export function ValidatingTextInput({
 
   return (
     <View style={styles.field}>
-      {label ? <ThemedText style={styles.label}>{label}</ThemedText> : null}
+      {label ? (
+        <View style={styles.labelRow}>
+          <ThemedText style={styles.label}>{label}</ThemedText>
+          {optional ? (
+            <ThemedText style={[styles.optionalSuffix, { color: muted }]}> (optional)</ThemedText>
+          ) : null}
+        </View>
+      ) : null}
       <TextInput
         style={[
           styles.input,
@@ -74,6 +98,9 @@ export function ValidatingTextInput({
         secureTextEntry={secureTextEntry}
         textContentType={textContentType}
         editable={editable}
+        returnKeyType={resolvedReturnKeyType}
+        blurOnSubmit={resolvedBlurOnSubmit}
+        onSubmitEditing={handleSubmitEditing}
       />
       <View style={styles.metaRow}>
         {error ? (
@@ -93,9 +120,18 @@ const styles = StyleSheet.create({
   field: {
     gap: 6,
   },
+  labelRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'baseline',
+  },
   label: {
     fontSize: 14,
     fontWeight: '600',
+  },
+  optionalSuffix: {
+    fontSize: 14,
+    fontWeight: '400',
   },
   input: {
     borderWidth: 1,

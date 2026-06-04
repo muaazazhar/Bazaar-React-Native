@@ -1,9 +1,9 @@
 import { Redirect } from 'expo-router';
+import type { ReactNode } from 'react';
 
-import AdminPaymentSettingsScreen from '@/screens/AdminPaymentSettingsScreen';
 import { useAppSelector } from '@/store/hooks';
 
-export default function AdminPaymentRoute() {
+export function AdminRoute({ children }: { children: ReactNode }) {
   const user = useAppSelector((state) => state.auth.user);
   const hydrated = useAppSelector((state) => state.auth.hydrated);
 
@@ -19,5 +19,5 @@ export default function AdminPaymentRoute() {
     return <Redirect href="/(tabs)" />;
   }
 
-  return <AdminPaymentSettingsScreen />;
+  return children;
 }

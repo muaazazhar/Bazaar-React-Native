@@ -1,14 +1,15 @@
 import { router } from "expo-router";
-import { Pressable, ScrollView, StyleSheet } from "react-native";
+import { useState } from "react";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ScreenHeader } from "@/components/screen-header";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { useThemeColor } from "@/hooks/use-theme-color";
-import { clearStoredAuthSession } from "@/store/authStorage";
+import { useSessionBusy } from "@/hooks/use-session-busy";
+import { performSessionLogout } from "@/store/authSession";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
-import { logout } from "@/store/slices/authSlice";
 
 export default function AccountScreen() {
   const user = useAppSelector((state) => state.auth.user);
@@ -18,10 +19,18 @@ export default function AccountScreen() {
   const danger = useThemeColor({}, "danger");
   const muted = useThemeColor({}, "muted");
 
+  const [loggingOut, setLoggingOut] = useState(false);
+  const sessionBusy = useSessionBusy();
+  const uiLocked = loggingOut || sessionBusy;
+
   const handleLogout = async () => {
-    dispatch(logout());
-    await clearStoredAuthSession();
-    router.replace("/login");
+    if (uiLocked) return;
+    setLoggingOut(true);
+    try {
+      await performSessionLogout(dispatch);
+    } finally {
+      setLoggingOut(false);
+    }
   };
 
   return (
@@ -51,6 +60,7 @@ export default function AccountScreen() {
           <Pressable
             style={[styles.menuItem, { borderColor }]}
             onPress={() => router.push("/(tabs)/orders")}
+            disabled={uiLocked}
           >
             <ThemedText>Orders</ThemedText>
           </Pressable>
@@ -66,10 +76,17 @@ export default function AccountScreen() {
         </ThemedView>
 
         <Pressable
-          style={[styles.menuItem, { borderColor: danger }]}
+          style={[styles.menuItem, { borderColor: danger }, uiLocked && styles.disabled]}
           onPress={handleLogout}
+          disabled={uiLocked}
         >
-          <ThemedText style={{ color: danger }}>Logout</ThemedText>
+          {loggingOut ? (
+            <ActivityIndicator color={danger} />
+          ) : (
+            <ThemedText style={{ color: danger }}>
+              {sessionBusy ? "Finishing tasks…" : "Logout"}
+            </ThemedText>
+          )}
         </Pressable>
       </ScrollView>
     </SafeAreaView>
@@ -99,5 +116,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 10,
     padding: 12,
+  },
+  disabled: {
+    opacity: 0.6,
   },
 });

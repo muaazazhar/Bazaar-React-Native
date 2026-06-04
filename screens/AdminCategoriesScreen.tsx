@@ -1,8 +1,11 @@
 import { useState } from 'react';
-import * as ImagePicker from 'expo-image-picker';
-import { Pressable, ScrollView, StyleSheet } from 'react-native';
+import { Pressable, StyleSheet } from 'react-native';
+import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ApiErrorBanner } from '@/components/api-feedback';
+import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
+import { useNotification } from '@/context/NotificationContext';
 import { ImagePickerField } from '@/components/image-picker-field';
 import { RemoteImage } from '@/components/remote-image';
 import { ScreenHeader } from '@/components/screen-header';
@@ -11,9 +14,15 @@ import { ThemedView } from '@/components/themed-view';
 import { ValidatingTextInput } from '@/components/validating-text-input';
 import { FIELD_LIMITS, validateRequired } from '@/constants/fieldLimits';
 import { useThemeColor } from '@/hooks/use-theme-color';
-import { useCreateCategoryMutation, useDeleteCategoryMutation, useGetCategoriesQuery, useUpdateCategoryMutation } from '@/store/api/catalogApi';
-import { getApiErrorMessage, isImageSizeError } from '@/utils/apiError';
-import { getImagePart, validateImageAsset } from '@/utils/imageUpload';
+import {
+  useCreateCategoryMutation,
+  useDeleteCategoryMutation,
+  useGetCategoriesQuery,
+} from '@/store/api/catalogApi';
+import { getApiErrorDetails } from '@/utils/apiError';
+import { notifyAdminApiFailure } from '@/utils/inAppNotify';
+import { categoryCreatedMessage } from '@/utils/notificationMessages';
+import { getImagePart, pickImageFromLibrary } from '@/utils/imageUpload';
 
 type NameFieldErrors = { name?: string; image?: string };
 
@@ -26,22 +35,15 @@ export default function AdminCategoriesScreen() {
     refetch,
   } = useGetCategoriesQuery();
   const [createCategory] = useCreateCategoryMutation();
-  const [updateCategory] = useUpdateCategoryMutation();
   const [deleteCategory] = useDeleteCategoryMutation();
+  const { notify } = useNotification();
 
   const [newName, setNewName] = useState('');
   const [newImageUri, setNewImageUri] = useState<string | null>(null);
   const [newImageError, setNewImageError] = useState<string | null>(null);
   const [createFieldErrors, setCreateFieldErrors] = useState<NameFieldErrors>({});
 
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editName, setEditName] = useState('');
-  const [editImageUri, setEditImageUri] = useState<string | null>(null);
-  const [editImageError, setEditImageError] = useState<string | null>(null);
-  const [editFieldErrors, setEditFieldErrors] = useState<NameFieldErrors>({});
-
   const [busy, setBusy] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
 
   const borderColor = useThemeColor({}, 'border');
   const surface = useThemeColor({}, 'surface');
@@ -50,40 +52,15 @@ export default function AdminCategoriesScreen() {
   const muted = useThemeColor({}, 'muted');
   const danger = useThemeColor({}, 'danger');
 
-  const pickImage = async (
-    setter: (uri: string) => void,
-    setImageError: (message: string | null) => void,
-  ) => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
+  const pickImage = () =>
+    pickImageFromLibrary({
       aspect: [1, 1],
-      quality: 0.8,
+      onUri: (uri) => {
+        setNewImageError(null);
+        setNewImageUri(uri);
+      },
+      onSizeError: setNewImageError,
     });
-    if (!result.canceled && result.assets.length > 0) {
-      const asset = result.assets[0];
-      const sizeError = validateImageAsset(asset);
-      if (sizeError) {
-        setImageError(sizeError);
-        return;
-      }
-      setImageError(null);
-      setter(asset.uri);
-    }
-  };
-
-  const showUploadError = (error: unknown, fallback: string) => {
-    const message = getApiErrorMessage(error, fallback);
-    setFormError(message);
-    if (isImageSizeError(message)) {
-      if (editingId) {
-        setEditImageError(message);
-      } else {
-        setNewImageError(message);
-      }
-    }
-    alert(message);
-  };
 
   const handleCreate = async () => {
     const errors: NameFieldErrors = {};
@@ -98,53 +75,19 @@ export default function AdminCategoriesScreen() {
     formData.append('image', getImagePart(newImageUri!) as any);
 
     setBusy(true);
-    setFormError(null);
     try {
       await createCategory(formData).unwrap();
+      notify(categoryCreatedMessage(newName.trim()));
       setNewName('');
       setNewImageUri(null);
       setNewImageError(null);
       setCreateFieldErrors({});
     } catch (error) {
-      showUploadError(error, 'Could not create category. Please try again.');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const startEdit = (id: string, name: string) => {
-    setEditingId(id);
-    setEditName(name);
-    setEditImageUri(null);
-    setEditImageError(null);
-    setEditFieldErrors({});
-  };
-
-  const handleUpdate = async () => {
-    if (!editingId) return;
-    const errors: NameFieldErrors = {};
-    const nameError = validateRequired(editName, 'Category name');
-    if (nameError) errors.name = nameError;
-    setEditFieldErrors(errors);
-    if (Object.keys(errors).length > 0) return;
-
-    const formData = new FormData();
-    formData.append('name', editName.trim());
-    if (editImageUri) {
-      formData.append('image', getImagePart(editImageUri) as any);
-    }
-
-    setBusy(true);
-    setFormError(null);
-    try {
-      await updateCategory({ id: editingId, body: formData }).unwrap();
-      setEditingId(null);
-      setEditName('');
-      setEditImageUri(null);
-      setEditImageError(null);
-      setEditFieldErrors({});
-    } catch (error) {
-      showUploadError(error, 'Could not update category. Please try again.');
+      notifyAdminApiFailure(notify, error, 'Could not create category. Please try again.', {
+        title: 'Create failed',
+        context: 'POST /api/categories',
+        onImageSizeError: setNewImageError,
+      });
     } finally {
       setBusy(false);
     }
@@ -152,11 +95,13 @@ export default function AdminCategoriesScreen() {
 
   const handleDelete = async (id: string) => {
     setBusy(true);
-    setFormError(null);
     try {
       await deleteCategory({ id }).unwrap();
     } catch (error) {
-      showUploadError(error, 'Could not delete category. Please try again.');
+      notifyAdminApiFailure(notify, error, 'Could not delete category. Please try again.', {
+        title: 'Delete failed',
+        context: `DELETE /api/categories/${id}`,
+      });
     } finally {
       setBusy(false);
     }
@@ -164,14 +109,17 @@ export default function AdminCategoriesScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+      <KeyboardAwareScroll contentContainerStyle={styles.container}>
         <ScreenHeader title="Category Management" />
-        {formError ? <ThemedText style={{ color: danger }}>{formError}</ThemedText> : null}
-        {categoriesLoadError ? (
-          <ThemedText style={{ color: danger }}>
-            {getApiErrorMessage(categoriesQueryError, 'Could not load categories.')}
-          </ThemedText>
-        ) : null}
+        <ApiErrorBanner
+          title="Could not load categories"
+          message={
+            categoriesLoadError
+              ? getApiErrorDetails(categoriesQueryError, 'Could not load categories.').message
+              : null
+          }
+          onRetry={refetch}
+        />
         <ThemedText style={[styles.helperText, { color: muted }]}>
           Create categories with image attachments and maintain them independently.
         </ThemedText>
@@ -192,8 +140,9 @@ export default function AdminCategoriesScreen() {
             error={createFieldErrors.name}
           />
           <ImagePickerField
-            label="Select Category Image"
-            onPress={() => pickImage(setNewImageUri, setNewImageError)}
+            label="Category image"
+            actionLabel="Select image"
+            onPress={pickImage}
             onRemove={() => {
               setNewImageUri(null);
               setNewImageError(null);
@@ -222,7 +171,10 @@ export default function AdminCategoriesScreen() {
             {category.imageUrl ? (
               <RemoteImage uri={category.imageUrl} style={styles.preview} recyclingKey={`category-${category.id}`} />
             ) : null}
-            <Pressable style={[styles.secondaryButton, { borderColor }]} onPress={() => startEdit(String(category.id), category.name)} disabled={busy}>
+            <Pressable
+              style={[styles.secondaryButton, { borderColor }]}
+              onPress={() => router.push(`/admin-categories/edit/${category.id}`)}
+              disabled={busy}>
               <ThemedText>Edit Category</ThemedText>
             </Pressable>
             <Pressable style={[styles.secondaryButton, { borderColor: danger }]} onPress={() => handleDelete(String(category.id))} disabled={busy}>
@@ -230,43 +182,7 @@ export default function AdminCategoriesScreen() {
             </Pressable>
           </ThemedView>
         ))}
-
-        {editingId ? (
-          <ThemedView style={[styles.card, { borderColor, backgroundColor: surface }]}>
-            <ThemedText type="subtitle">Edit Category</ThemedText>
-            <ValidatingTextInput
-              label="Category name"
-              placeholder="Category name"
-              value={editName}
-              onChangeText={(text) => {
-                setEditName(text);
-                if (editFieldErrors.name) {
-                  setEditFieldErrors((prev) => ({ ...prev, name: undefined }));
-                }
-              }}
-              maxLength={FIELD_LIMITS.categoryName}
-              error={editFieldErrors.name}
-            />
-            <ImagePickerField
-              label="Select New Image (optional)"
-              variant="secondary"
-              onPress={() => pickImage(setEditImageUri, setEditImageError)}
-              onRemove={() => {
-                setEditImageUri(null);
-                setEditImageError(null);
-              }}
-              imageUri={editImageUri}
-              imageError={editImageError}
-              disabled={busy}
-              recyclingKey={editImageUri ? `edit-${editImageUri}` : undefined}
-              previewStyle={styles.preview}
-            />
-            <Pressable style={[styles.button, { backgroundColor: primary }, busy && styles.buttonDisabled]} onPress={handleUpdate} disabled={busy}>
-              <ThemedText style={[styles.buttonText, { color: primaryText }]}>Save Category</ThemedText>
-            </Pressable>
-          </ThemedView>
-        ) : null}
-      </ScrollView>
+      </KeyboardAwareScroll>
     </SafeAreaView>
   );
 }

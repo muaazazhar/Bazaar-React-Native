@@ -2,6 +2,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -10,6 +11,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ApiErrorBanner } from '@/components/api-feedback';
+import { useNotification } from '@/context/NotificationContext';
 import { ValidatingTextInput } from '@/components/validating-text-input';
 import { ScreenHeader } from '@/components/screen-header';
 import { ThemedText } from '@/components/themed-text';
@@ -21,7 +24,8 @@ import { persistAuthSession } from '@/store/authStorage';
 import { clearVerificationStorage, getPendingEmail } from '@/store/verificationStorage';
 import { useAppDispatch } from '@/store/hooks';
 import { setCredentials } from '@/store/slices/authSlice';
-import { getApiErrorMessage } from '@/utils/apiError';
+import { getApiErrorDetails } from '@/utils/apiError';
+import { notifyApiFailure } from '@/utils/inAppNotify';
 import { getResendCooldownSeconds, isResendCooldownError } from '@/utils/authApiErrors';
 import { routeAfterAuth } from '@/utils/authRouting';
 
@@ -48,7 +52,12 @@ export default function VerifyEmailScreen() {
     typeof emailParam === 'string' ? emailParam.trim() : '',
   );
   const [code, setCode] = useState('');
+  const { notify } = useNotification();
   const [error, setError] = useState('');
+
+  const showApiError = (err: unknown, fallback: string, context: string) => {
+    notifyApiFailure(notify, err, fallback, { title: 'Verification', context });
+  };
   const [info, setInfo] = useState('');
   const [sending, setSending] = useState(false);
   const [verifying, setVerifying] = useState(false);
@@ -91,9 +100,9 @@ export default function VerifyEmailScreen() {
     } catch (err) {
       if (isResendCooldownError(err)) {
         setSecondsLeft(getResendCooldownSeconds(err));
-        setError(getApiErrorMessage(err, 'Please wait before resending.'));
+        showApiError(err, 'Please wait before resending.', 'POST /api/auth/resend-verification');
       } else {
-        setError(getApiErrorMessage(err, 'Could not resend verification code.'));
+        showApiError(err, 'Could not resend verification code.', 'POST /api/auth/resend-verification');
       }
     } finally {
       setSending(false);
@@ -128,7 +137,7 @@ export default function VerifyEmailScreen() {
       await clearVerificationStorage();
       routeAfterAuth(loginData.user);
     } catch (err) {
-      setError(getApiErrorMessage(err, 'Verification failed. Please try again.'));
+      showApiError(err, 'Verification failed. Please try again.', 'POST /api/auth/verify-email');
     } finally {
       setVerifying(false);
     }
@@ -163,7 +172,10 @@ export default function VerifyEmailScreen() {
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+          automaticallyAdjustKeyboardInsets
           showsVerticalScrollIndicator={false}>
+          <Pressable style={styles.scrollContent} onPress={Keyboard.dismiss} accessible={false}>
           <ThemedView style={[styles.container, { backgroundColor }]}>
             <ScreenHeader title="Verify Email" showBack={false} />
             <ThemedText style={[styles.helperText, { color: muted }]}>
@@ -176,7 +188,9 @@ export default function VerifyEmailScreen() {
               value={code}
               onChangeText={(text) => {
                 setCode(text.replace(/[^0-9]/g, '').slice(0, FIELD_LIMITS.verificationCode));
-                if (error) setError('');
+                if (error) {
+                  setError('');
+                }
               }}
               maxLength={FIELD_LIMITS.verificationCode}
               keyboardType="number-pad"
@@ -184,7 +198,7 @@ export default function VerifyEmailScreen() {
             />
 
             {info ? <ThemedText style={{ color: muted }}>{info}</ThemedText> : null}
-            {error ? <ThemedText style={{ color: danger }}>{error}</ThemedText> : null}
+            <ApiErrorBanner title="Verification" message={error || null} />
 
             <Pressable
               style={[
@@ -216,6 +230,7 @@ export default function VerifyEmailScreen() {
               <ThemedText type="link">Back to login</ThemedText>
             </Pressable>
           </ThemedView>
+          </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
