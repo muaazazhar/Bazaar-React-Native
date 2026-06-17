@@ -10,6 +10,12 @@ export function normalizeUser(raw: unknown): User {
     id: String(record.id ?? ''),
     email: String(record.email ?? ''),
     username: record.username != null ? String(record.username) : undefined,
+    phone:
+      record.phone != null
+        ? String(record.phone).trim() || null
+        : record.phone_number != null
+          ? String(record.phone_number).trim() || null
+          : null,
     role: record.role === 'admin' ? 'admin' : 'user',
     isVerified,
   };

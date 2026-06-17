@@ -23,6 +23,9 @@ const authSlice = createSlice({
       state.token = action.payload.token;
       state.hydrated = true;
     },
+    updateUser: (state, action: PayloadAction<User>) => {
+      state.user = action.payload;
+    },
     logout: (state) => {
       state.user = null;
       state.token = null;
@@ -41,5 +44,5 @@ const authSlice = createSlice({
   },
 });
 
-export const { setCredentials, logout, hydrateAuth } = authSlice.actions;
+export const { setCredentials, logout, hydrateAuth, updateUser } = authSlice.actions;
 export const authReducer = authSlice.reducer;

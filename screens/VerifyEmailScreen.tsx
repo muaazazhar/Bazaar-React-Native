@@ -26,17 +26,8 @@ import { useAppDispatch } from '@/store/hooks';
 import { setCredentials } from '@/store/slices/authSlice';
 import { getApiErrorDetails } from '@/utils/apiError';
 import { notifyApiFailure } from '@/utils/inAppNotify';
-import { getResendCooldownSeconds, isResendCooldownError } from '@/utils/authApiErrors';
+import { getResendCooldownSeconds, isResendCooldownError, parseResendParam } from '@/utils/authApiErrors';
 import { routeAfterAuth } from '@/utils/authRouting';
-
-function parseResendParam(value: string | string[] | undefined): number {
-  const raw = Array.isArray(value) ? value[0] : value;
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || parsed < 0) {
-    return 0;
-  }
-  return Math.ceil(parsed);
-}
 
 export default function VerifyEmailScreen() {
   const { email: emailParam, resendIn: resendInParam } = useLocalSearchParams<{

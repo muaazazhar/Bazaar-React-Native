@@ -40,3 +40,12 @@ export function getEmailFromApiError(error: unknown): string | null {
   const email = getApiErrorData(error)?.email;
   return typeof email === 'string' && email.trim() ? email.trim() : null;
 }
+
+export function parseResendParam(value: string | string[] | undefined): number {
+  const raw = Array.isArray(value) ? value[0] : value;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return 0;
+  }
+  return Math.ceil(parsed);
+}

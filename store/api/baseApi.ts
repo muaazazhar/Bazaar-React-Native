@@ -14,6 +14,10 @@ const PUBLIC_AUTH_PATHS = [
   '/api/auth/verify-email',
   '/api/auth/resend-verification',
   '/api/auth/google/exchange',
+  '/api/auth/forgot-password',
+  '/api/auth/verify-reset-otp',
+  '/api/auth/reset-password',
+  '/api/auth/resend-reset-otp',
 ];
 
 const SESSION_CHECK_PATHS = [...PUBLIC_AUTH_PATHS, '/api/auth/me'];

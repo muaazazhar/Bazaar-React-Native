@@ -9,9 +9,17 @@ export type StoredAuthSession = {
     id: string;
     email: string;
     username?: string;
+    phone?: string | null;
     role: 'admin' | 'user';
+    isVerified?: boolean;
   };
 };
+
+export async function updateStoredAuthUser(user: StoredAuthSession['user']) {
+  const session = await getStoredAuthSession();
+  if (!session) return;
+  await persistAuthSession({ ...session, user });
+}
 
 export async function persistAuthSession(session: StoredAuthSession) {
   try {

@@ -13,9 +13,12 @@ export const FIELD_LIMITS = {
   identifier: 150,
   username: 50,
   email: 150,
+  phone: 20,
   password: 128,
   verificationCode: 6,
 } as const;
+
+export const MIN_PASSWORD_LENGTH = 8;
 
 export function isEmpty(value: string): boolean {
   return !value.trim();
@@ -62,6 +65,48 @@ export function validateEmail(value: string): string | null {
   if (required) return required;
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())) {
     return 'Enter a valid email address.';
+  }
+  return null;
+}
+
+export function validatePhone(value: string): string | null {
+  const required = validateRequired(value, 'Phone number');
+  if (required) return required;
+  const digits = value.replace(/\D/g, '');
+  if (digits.length < 10 || digits.length > 15) {
+    return 'Enter a valid phone number (e.g. 03001234567).';
+  }
+  return null;
+}
+
+export function validateUsername(value: string): string | null {
+  const required = validateRequired(value, 'Username');
+  if (required) return required;
+  if (/\s/.test(value)) {
+    return 'Username cannot contain spaces.';
+  }
+  return null;
+}
+
+export function validatePhoneOptional(value: string): string | null {
+  if (!value.trim()) return null;
+  return validatePhone(value);
+}
+
+export function validatePassword(value: string): string | null {
+  const required = validateRequired(value, 'Password');
+  if (required) return required;
+  if (value.length < MIN_PASSWORD_LENGTH) {
+    return `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`;
+  }
+  return null;
+}
+
+export function validatePasswordConfirm(password: string, confirm: string): string | null {
+  const required = validateRequired(confirm, 'Confirm password');
+  if (required) return required;
+  if (password !== confirm) {
+    return 'Passwords do not match.';
   }
   return null;
 }

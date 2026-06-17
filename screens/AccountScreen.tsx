@@ -51,6 +51,7 @@ export default function AccountScreen() {
             {user?.username ?? "Customer"}
           </ThemedText>
           <ThemedText>{user?.email}</ThemedText>
+          {user?.phone ? <ThemedText style={{ color: muted }}>{user.phone}</ThemedText> : null}
         </ThemedView>
 
         <ThemedView
@@ -64,11 +65,15 @@ export default function AccountScreen() {
           >
             <ThemedText>Orders</ThemedText>
           </Pressable>
-          <Pressable style={[styles.menuItem, { borderColor }]}>
-            <ThemedText>Connect Accounts</ThemedText>
+          <Pressable
+            style={[styles.menuItem, { borderColor }]}
+            onPress={() => router.push("/edit-profile")}
+            disabled={uiLocked}
+          >
+            <ThemedText>Edit profile</ThemedText>
           </Pressable>
           <Pressable style={[styles.menuItem, { borderColor }]}>
-            <ThemedText>Settings</ThemedText>
+            <ThemedText>Connect Accounts</ThemedText>
           </Pressable>
           <Pressable style={[styles.menuItem, { borderColor }]}>
             <ThemedText>Share App</ThemedText>

@@ -54,11 +54,13 @@ export async function loginApi(
 export async function registerApi(
   username: string,
   email: string,
+  phone: string,
   password: string,
 ): Promise<AuthResponse> {
   const res = await api.post<MaybeAuthResponse>("/auth/register", {
     username: username.trim(),
     email: email.trim(),
+    phone: phone.trim(),
     password,
   });
   return toAuthResponse(res.data);

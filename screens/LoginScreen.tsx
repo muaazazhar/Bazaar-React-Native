@@ -16,7 +16,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { ApiErrorBanner } from "@/components/api-feedback";
 import { ValidatingTextInput } from "@/components/validating-text-input";
 import { ScreenHeader } from "@/components/screen-header";
-import { FIELD_LIMITS, validateEmail, validateRequired } from "@/constants/fieldLimits";
+import { FIELD_LIMITS, validateEmail, validatePassword, validatePhone, validateRequired } from "@/constants/fieldLimits";
 import { getApiErrorDetails, logApiError } from "@/utils/apiError";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
@@ -121,6 +121,7 @@ export default function LoginScreen() {
   const [identifier, setIdentifier] = useState("");
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isRegisterMode, setIsRegisterMode] = useState(false);
@@ -131,6 +132,7 @@ export default function LoginScreen() {
     identifier?: string;
     username?: string;
     email?: string;
+    phone?: string;
     password?: string;
   }>({});
   const borderColor = useThemeColor({}, "border");
@@ -185,6 +187,7 @@ export default function LoginScreen() {
       identifier?: string;
       username?: string;
       email?: string;
+      phone?: string;
       password?: string;
     } = {};
 
@@ -193,7 +196,9 @@ export default function LoginScreen() {
       if (usernameError) errors.username = usernameError;
       const emailError = validateEmail(email);
       if (emailError) errors.email = emailError;
-      const passwordError = validateRequired(password, "Password");
+      const phoneError = validatePhone(phone);
+      if (phoneError) errors.phone = phoneError;
+      const passwordError = validatePassword(password);
       if (passwordError) errors.password = passwordError;
     } else {
       const identifierError = validateRequired(identifier, "Email or username");
@@ -211,6 +216,7 @@ export default function LoginScreen() {
         const registered = await registerMutation({
           username: username.trim(),
           email: email.trim(),
+          phone: phone.trim(),
           password,
         }).unwrap();
         if (registered.requiresVerification) {
@@ -436,6 +442,23 @@ export default function LoginScreen() {
                   textContentType="emailAddress"
                   error={fieldErrors.email}
                 />
+                <ValidatingTextInput
+                  label="Phone number"
+                  placeholder="e.g. 03001234567"
+                  value={phone}
+                  onChangeText={(text) => {
+                    setPhone(text);
+                    if (fieldErrors.phone) {
+                      setFieldErrors((prev) => ({ ...prev, phone: undefined }));
+                    }
+                  }}
+                  maxLength={FIELD_LIMITS.phone}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="phone-pad"
+                  textContentType="telephoneNumber"
+                  error={fieldErrors.phone}
+                />
               </>
             ) : null}
             <ValidatingTextInput
@@ -463,6 +486,15 @@ export default function LoginScreen() {
                 {showPassword ? "Hide Password" : "Show Password"}
               </ThemedText>
             </Pressable>
+            {!isRegisterMode ? (
+              <Pressable
+                style={styles.forgotLink}
+                onPress={() => router.push("/forgot-password")}
+                disabled={loading || googleLoading}
+              >
+                <ThemedText type="link">Forgot password?</ThemedText>
+              </Pressable>
+            ) : null}
             <ApiErrorBanner title="Sign in" message={error || null} />
             <Pressable
               style={[
@@ -499,6 +531,7 @@ export default function LoginScreen() {
                 } else {
                   setUsername("");
                   setEmail("");
+                  setPhone("");
                 }
               }}
               disabled={loading || googleLoading}
@@ -581,6 +614,10 @@ const styles = StyleSheet.create({
   toggleButton: {
     alignSelf: "flex-end",
     paddingVertical: 4,
+  },
+  forgotLink: {
+    alignSelf: "flex-start",
+    paddingVertical: 2,
   },
   buttonDisabled: {
     opacity: 0.6,

@@ -6,5 +6,11 @@ export function setTrackedPathname(pathname: string) {
 }
 
 export function isAuthFlowScreen(): boolean {
-  return trackedPathname === '/login' || trackedPathname.startsWith('/verify-email');
+  return (
+    trackedPathname === '/login' ||
+    trackedPathname.startsWith('/verify-email') ||
+    trackedPathname.startsWith('/forgot-password') ||
+    trackedPathname.startsWith('/verify-reset-otp') ||
+    trackedPathname.startsWith('/reset-password')
+  );
 }
