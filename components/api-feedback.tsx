@@ -1,7 +1,6 @@
 import { useEffect, useRef } from 'react';
 
 import { useNotification } from '@/context/NotificationContext';
-import { store } from '@/store';
 import { isSessionLogoutInProgress } from '@/store/authSession';
 
 type ApiErrorBannerProps = {
@@ -17,7 +16,8 @@ type ApiErrorBannerProps = {
 };
 
 /**
- * Shows a top toast (same as Admin Orders) when `message` is set. Renders nothing inline.
+ * Shows a top toast when `message` is set. Renders nothing inline.
+ * Works on public screens (login, register) — not gated on auth token.
  */
 export function ApiErrorBanner({
   message,
@@ -37,8 +37,7 @@ export function ApiErrorBanner({
       return;
     }
 
-    const token = store.getState().auth.token;
-    if (!token || isSessionLogoutInProgress()) {
+    if (isSessionLogoutInProgress()) {
       return;
     }
 

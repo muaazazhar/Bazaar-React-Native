@@ -1,20 +1,19 @@
 import { baseApi } from '@/store/api/baseApi';
 import type { Category, Product } from '@/types/domain';
 import { normalizeCategory, normalizeProduct } from '@/utils/catalogNormalize';
-import { mapArrayResponse } from '@/utils/rtkResponse';
+import { buildPagedUrl, PAGE_LIMITS, parsePaginatedPage, type PaginatedPage } from '@/utils/pagination';
 
 export const catalogApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
-    getCategories: builder.query<Category[], void>({
-      query: () => '/api/categories',
-      transformResponse: (response: unknown) => mapArrayResponse(response, normalizeCategory),
-      providesTags: (result) =>
-        result
-          ? [
-              { type: 'Category', id: 'LIST' },
-              ...result.map((category) => ({ type: 'Category' as const, id: String(category.id) })),
-            ]
-          : [{ type: 'Category', id: 'LIST' }],
+    getCategory: builder.query<Category, string>({
+      query: (id) => `/api/categories/${id}`,
+      transformResponse: (response: unknown) => normalizeCategory(response),
+      providesTags: (_result, _error, id) => [{ type: 'Category', id }],
+    }),
+    getProduct: builder.query<Product, string>({
+      query: (id) => `/api/products/${id}`,
+      transformResponse: (response: unknown) => normalizeProduct(response),
+      providesTags: (_result, _error, id) => [{ type: 'Product', id }],
     }),
     createCategory: builder.mutation<Category, FormData | { name: string }>({
       query: (body) => ({
@@ -45,27 +44,6 @@ export const catalogApi = baseApi.injectEndpoints({
       invalidatesTags: (_result, _error, arg) => [
         { type: 'Category', id: 'LIST' },
         { type: 'Category', id: arg.id },
-      ],
-    }),
-    getProducts: builder.query<Product[], void>({
-      query: () => '/api/products',
-      transformResponse: (response: unknown) => mapArrayResponse(response, normalizeProduct),
-      providesTags: (result) =>
-        result
-          ? [{ type: 'Product', id: 'LIST' }, ...result.map((product) => ({ type: 'Product' as const, id: String(product.id) }))]
-          : [{ type: 'Product', id: 'LIST' }],
-    }),
-    getPopularProducts: builder.query<Product[], void>({
-      query: () => '/api/products/popular',
-      transformResponse: (response: unknown) => mapArrayResponse(response, normalizeProduct),
-      providesTags: [{ type: 'Product', id: 'POPULAR' }],
-    }),
-    getProductsByCategory: builder.query<Product[], { categoryId: string }>({
-      query: ({ categoryId }) => `/api/categories/${categoryId}/products`,
-      transformResponse: (response: unknown) => mapArrayResponse(response, normalizeProduct),
-      providesTags: (_result, _error, arg) => [
-        { type: 'Product', id: 'LIST' },
-        { type: 'Product', id: `CATEGORY-${arg.categoryId}` },
       ],
     }),
     createProduct: builder.mutation<Product, FormData>({
@@ -104,18 +82,81 @@ export const catalogApi = baseApi.injectEndpoints({
         { type: 'Product', id: arg.id },
       ],
     }),
+    getCategoryOptions: builder.query<Category[], void>({
+      query: () => buildPagedUrl('/api/categories', 1, PAGE_LIMITS.categories),
+      transformResponse: (response) =>
+        parsePaginatedPage(response, normalizeCategory, 1, PAGE_LIMITS.categories).items,
+      providesTags: [{ type: 'Category', id: 'LIST' }],
+    }),
+    getCategoryPages: builder.infiniteQuery<PaginatedPage<Category>, void, number>({
+      infiniteQueryOptions: {
+        initialPageParam: 1,
+        getNextPageParam: (lastPage) => (lastPage.hasMore ? lastPage.page + 1 : undefined),
+      },
+      query: ({ pageParam }) =>
+        buildPagedUrl('/api/categories', pageParam, PAGE_LIMITS.categories),
+      transformResponse: (response, _meta, arg) =>
+        parsePaginatedPage(response, normalizeCategory, arg.pageParam, PAGE_LIMITS.categories),
+      providesTags: [{ type: 'Category', id: 'LIST' }],
+    }),
+    getPopularProductPages: builder.infiniteQuery<PaginatedPage<Product>, void, number>({
+      infiniteQueryOptions: {
+        initialPageParam: 1,
+        getNextPageParam: (lastPage) => (lastPage.hasMore ? lastPage.page + 1 : undefined),
+      },
+      query: ({ pageParam }) =>
+        buildPagedUrl('/api/products/popular', pageParam, PAGE_LIMITS.popularProducts),
+      transformResponse: (response, _meta, arg) =>
+        parsePaginatedPage(response, normalizeProduct, arg.pageParam, PAGE_LIMITS.popularProducts),
+      providesTags: [{ type: 'Product', id: 'POPULAR' }],
+    }),
+    getCategoryProductPages: builder.infiniteQuery<
+      PaginatedPage<Product>,
+      { categoryId: string },
+      number
+    >({
+      infiniteQueryOptions: {
+        initialPageParam: 1,
+        getNextPageParam: (lastPage) => (lastPage.hasMore ? lastPage.page + 1 : undefined),
+      },
+      query: ({ queryArg, pageParam }) =>
+        buildPagedUrl(
+          `/api/categories/${queryArg.categoryId}/products`,
+          pageParam,
+          PAGE_LIMITS.products,
+        ),
+      transformResponse: (response, _meta, arg) =>
+        parsePaginatedPage(response, normalizeProduct, arg.pageParam, PAGE_LIMITS.products),
+      providesTags: (_result, _error, arg) => [
+        { type: 'Product', id: 'LIST' },
+        { type: 'Product', id: `CATEGORY-${arg.categoryId}` },
+      ],
+    }),
+    getProductPages: builder.infiniteQuery<PaginatedPage<Product>, void, number>({
+      infiniteQueryOptions: {
+        initialPageParam: 1,
+        getNextPageParam: (lastPage) => (lastPage.hasMore ? lastPage.page + 1 : undefined),
+      },
+      query: ({ pageParam }) => buildPagedUrl('/api/products', pageParam, PAGE_LIMITS.products),
+      transformResponse: (response, _meta, arg) =>
+        parsePaginatedPage(response, normalizeProduct, arg.pageParam, PAGE_LIMITS.products),
+      providesTags: [{ type: 'Product', id: 'LIST' }],
+    }),
   }),
 });
 
 export const {
-  useGetCategoriesQuery,
+  useGetCategoryQuery,
+  useGetProductQuery,
+  useGetCategoryOptionsQuery,
   useCreateCategoryMutation,
   useUpdateCategoryMutation,
   useDeleteCategoryMutation,
-  useGetProductsQuery,
-  useGetPopularProductsQuery,
-  useGetProductsByCategoryQuery,
   useCreateProductMutation,
   useUpdateProductMutation,
   useDeleteProductMutation,
+  useGetCategoryPagesInfiniteQuery,
+  useGetPopularProductPagesInfiniteQuery,
+  useGetCategoryProductPagesInfiniteQuery,
+  useGetProductPagesInfiniteQuery,
 } = catalogApi;

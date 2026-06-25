@@ -68,6 +68,7 @@ export function normalizeStoreSettings(raw: unknown): StoreSettings | null {
     featuredProductIds: normalizeFeaturedIds(
       record.featuredProductIds ?? record.featured_product_ids,
     ),
+    whatsappNumber: optionalString(record.whatsappNumber ?? record.whatsapp_number),
   };
 }
 

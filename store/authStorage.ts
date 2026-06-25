@@ -1,5 +1,5 @@
-
 import { setItem, getItem, removeItem } from './secureStorage';
+import type { User } from '@/types/domain';
 
 const AUTH_STORAGE_KEY = 'store_auth_session';
 
@@ -9,11 +9,26 @@ export type StoredAuthSession = {
     id: string;
     email: string;
     username?: string;
+    firstName?: string;
+    lastName?: string;
     phone?: string | null;
     role: 'admin' | 'user';
     isVerified?: boolean;
   };
 };
+
+export function toStoredAuthUser(user: User): StoredAuthSession['user'] {
+  return {
+    id: user.id,
+    email: user.email,
+    username: user.username,
+    firstName: user.firstName,
+    lastName: user.lastName,
+    phone: user.phone,
+    role: user.role,
+    isVerified: user.isVerified,
+  };
+}
 
 export async function updateStoredAuthUser(user: StoredAuthSession['user']) {
   const session = await getStoredAuthSession();

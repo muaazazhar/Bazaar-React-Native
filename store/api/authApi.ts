@@ -104,7 +104,14 @@ export const authApi = baseApi.injectEndpoints({
     }),
     register: builder.mutation<
       RegisterResponse,
-      { email: string; username: string; phone: string; password: string }
+      {
+        email: string;
+        username: string;
+        firstName: string;
+        lastName: string;
+        phone: string;
+        password: string;
+      }
     >({
       query: (body) => ({
         url: '/api/auth/register',

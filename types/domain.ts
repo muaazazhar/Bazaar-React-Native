@@ -3,6 +3,8 @@ export type UserRole = 'admin' | 'user';
 export type User = {
   id: string;
   username?: string;
+  firstName?: string;
+  lastName?: string;
   email: string;
   phone?: string | null;
   role: UserRole;
@@ -57,7 +59,7 @@ export type Order = {
   paymentScreenshotUrl?: string | null;
   createdAt?: string;
   userId?: string;
-  user?: Pick<User, 'id' | 'email' | 'username' | 'phone'>;
+  user?: Pick<User, 'id' | 'email' | 'username' | 'phone' | 'firstName' | 'lastName'>;
   items: OrderItem[];
   paymentMethod?: PaymentMethod;
   walletProvider?: WalletProvider | null;
@@ -86,4 +88,6 @@ export type StoreSettings = {
   popularCriteria: PopularProductCriteria;
   /** When `popularCriteria` is `featured`, product ids in display order. */
   featuredProductIds: string[];
+  /** WhatsApp number for the home screen “Contact us” button (E.164 or local PK format). */
+  whatsappNumber?: string | null;
 };

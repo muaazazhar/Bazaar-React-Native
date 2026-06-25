@@ -6,7 +6,9 @@ import { Provider } from 'react-redux';
 
 import { AuthBootstrap } from '@/components/auth-bootstrap';
 import { AuthRouteTracker } from '@/components/auth-route-tracker';
+import { CustomerScreenOverlays } from '@/components/customer-screen-overlays';
 import { NotificationHost } from '@/components/notification-host';
+import { NotificationLogoutSync } from '@/components/notification-logout-sync';
 import { SessionBusyOverlay } from '@/components/session-busy-overlay';
 import { OrderStatusWatcher } from '@/components/order-status-watcher';
 import { CartProvider } from '@/context/CartContext';
@@ -27,7 +29,9 @@ export default function RootLayout() {
           <NotificationProvider>
             <AuthRouteTracker />
             <OrderStatusWatcher />
+            <NotificationLogoutSync />
             <RootNavigator />
+            <CustomerScreenOverlays />
             <NotificationHost />
             <SessionBusyOverlay />
           </NotificationProvider>

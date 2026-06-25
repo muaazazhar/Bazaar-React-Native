@@ -1,12 +1,9 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
-  ActivityIndicator,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
-  Pressable,
-  ScrollView,
   StyleSheet,
   TouchableWithoutFeedback,
   View,
@@ -14,15 +11,27 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ApiErrorBanner } from '@/components/api-feedback';
+import { OrderListSkeleton } from '@/components/catalog-skeletons';
+import { ListEmptyPlaceholder } from '@/components/list-empty-placeholder';
+import { PaginatedFlatList, paginatedListStyles } from '@/components/paginated-flat-list';
+import { CustomOrderBadge } from '@/components/custom-order-badge';
+import { OrderCustomerDetails } from '@/components/order-customer-details';
 import { OrderItemsList } from '@/components/order-items-list';
 import { useNotification } from '@/context/NotificationContext';
 import { ScreenHeader } from '@/components/screen-header';
+import { ThemedButton } from '@/components/themed-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { ValidatingTextInput } from '@/components/validating-text-input';
 import { FIELD_LIMITS } from '@/constants/fieldLimits';
+import { usePaginatedInfiniteList } from '@/hooks/use-paginated-infinite-list';
 import { useThemeColor } from '@/hooks/use-theme-color';
-import { useGetAllOrdersQuery, useUpdateOrderStatusMutation, type OrderStatus } from '@/store/api/ordersApi';
+import {
+  useGetAllOrderPagesInfiniteQuery,
+  useUpdateOrderStatusMutation,
+  type OrderStatus,
+} from '@/store/api/ordersApi';
+import type { Order } from '@/types/domain';
 import { getApiErrorDetails } from '@/utils/apiError';
 import { notifyApiFailure } from '@/utils/inAppNotify';
 import {
@@ -31,11 +40,9 @@ import {
   orderStatusUpdateBusyMessage,
 } from '@/utils/notificationMessages';
 import {
-  CUSTOM_ORDER_BADGE,
   formatOrderHeading,
   formatOrderStatus,
   formatPaymentMethod,
-  getOrderCustomerLabel,
   getOrderListMeta,
   isTerminalOrderStatus,
   normalizeOrderStatusKey,
@@ -51,20 +58,17 @@ export default function AdminOrdersScreen() {
   const [cancelReason, setCancelReason] = useState('');
   const [cancelReasonError, setCancelReasonError] = useState<string | null>(null);
 
-  const { data: orders = [], isLoading, isError, error, refetch } = useGetAllOrdersQuery();
+  const query = useGetAllOrderPagesInfiniteQuery();
+  const { items, isInitialLoading, loadMore, isFetchingNextPage } = usePaginatedInfiniteList(query);
   const [updateOrderStatus] = useUpdateOrderStatusMutation();
 
   const borderColor = useThemeColor({}, 'border');
   const surface = useThemeColor({}, 'surface');
-  const primary = useThemeColor({}, 'primary');
-  const primaryText = useThemeColor({}, 'primaryText');
-  const danger = useThemeColor({}, 'danger');
   const muted = useThemeColor({}, 'muted');
-  const text = useThemeColor({}, 'text');
   const surfaceAlt = useThemeColor({}, 'surfaceAlt');
 
-  const loadErrorDetails = isError
-    ? getApiErrorDetails(error, 'Could not load orders.')
+  const loadErrorDetails = query.isError
+    ? getApiErrorDetails(query.error, 'Could not load orders.')
     : null;
 
   const setActionFailure = (err: unknown, fallback: string, context: string) => {
@@ -74,7 +78,7 @@ export default function AdminOrdersScreen() {
     });
   };
 
-  const findOrder = (orderId: string) => orders.find((o) => String(o.id) === orderId);
+  const findOrder = (orderId: string) => items.find((o) => String(o.id) === orderId);
 
   const isStatusActionBlocked = (orderId: string | number, currentStatus: string): boolean => {
     if (busy) {
@@ -95,7 +99,7 @@ export default function AdminOrdersScreen() {
     setBusy(true);
     try {
       await updateOrderStatus({ id: orderId, status }).unwrap();
-      await refetch();
+      await query.refetch();
       notify(adminOrderStatusUpdatedMessage(findOrder(orderId)?.orderNo, status));
     } catch (err) {
       setActionFailure(err, 'Could not update order status.', `PATCH /api/orders/${orderId}`);
@@ -137,7 +141,7 @@ export default function AdminOrdersScreen() {
         cancellationReason: trimmed,
       }).unwrap();
       closeCancelModal();
-      await refetch();
+      await query.refetch();
       notify(adminOrderStatusUpdatedMessage(findOrder(cancelOrderId)?.orderNo, 'cancelled'));
     } catch (err) {
       setActionFailure(
@@ -150,101 +154,109 @@ export default function AdminOrdersScreen() {
     }
   };
 
+  const renderOrder = useCallback(
+    ({ item: order }: { item: Order }) => {
+      const terminal = isTerminalOrderStatus(order.status);
+      const actionsDisabled = busy || terminal;
+      const statusKey = normalizeOrderStatusKey(order.status);
+      const { isCustom, itemLabels, totalLabel } = getOrderListMeta(order);
+      return (
+        <ThemedView style={[styles.card, { borderColor, backgroundColor: surface }]}>
+          <ThemedText type="defaultSemiBold">{formatOrderHeading(order)}</ThemedText>
+          {isCustom ? <CustomOrderBadge color={muted} /> : null}
+          <OrderCustomerDetails order={order} />
+          <ThemedText>
+            Status: {formatOrderStatus(order.status)}
+            {terminal ? (
+              <ThemedText style={{ color: muted }}> (final)</ThemedText>
+            ) : null}
+          </ThemedText>
+          <ThemedText>
+            Payment: {formatPaymentMethod(order.paymentMethod, order.walletProvider)}
+          </ThemedText>
+          <ThemedText>Address: {order.address}</ThemedText>
+          <ThemedText>Total: {totalLabel}</ThemedText>
+          <OrderItemsList title={isCustom ? 'Requested items' : 'Items'} labels={itemLabels} />
+          {order.status.toLowerCase() === 'cancelled' && order.cancellationReason ? (
+            <ThemedText style={{ color: muted }}>
+              Cancellation reason: {order.cancellationReason}
+            </ThemedText>
+          ) : null}
+          {terminal ? (
+            <ThemedText style={[styles.terminalHint, { color: muted, backgroundColor: surfaceAlt, borderColor }]}>
+              This order is {statusKey === 'cancelled' || statusKey === 'canceled' ? 'cancelled' : 'fulfilled'}.
+              Status can no longer be changed.
+            </ThemedText>
+          ) : null}
+          <View style={styles.statusRow}>
+            <ThemedButton
+              variant="secondary"
+              label="Processing"
+              loading={busy && !terminal}
+              disabled={actionsDisabled}
+              onPress={() => handleStatusUpdate(String(order.id), 'processing', order.status)}
+              style={styles.statusActionButton}
+            />
+            <ThemedButton
+              variant="secondary"
+              label="Fulfilled"
+              loading={busy && !terminal}
+              disabled={actionsDisabled}
+              onPress={() => handleStatusUpdate(String(order.id), 'fulfilled', order.status)}
+              style={styles.statusActionButton}
+            />
+            <ThemedButton
+              variant="danger"
+              label="Cancel"
+              loading={busy && !terminal}
+              disabled={actionsDisabled}
+              onPress={() => openCancelModal(String(order.id), order.status)}
+              style={styles.statusActionButton}
+            />
+          </View>
+        </ThemedView>
+      );
+    },
+    [borderColor, busy, muted, surface, surfaceAlt],
+  );
+
+  const listEmpty = (
+    <ListEmptyPlaceholder
+      isLoading={isInitialLoading}
+      isError={Boolean(loadErrorDetails)}
+      loadingSkeleton={<OrderListSkeleton count={3} />}
+      emptyLabel="No orders yet."
+    />
+  );
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-      <ScrollView
-        contentContainerStyle={styles.container}
-        showsVerticalScrollIndicator={false}
+      <PaginatedFlatList
+        data={items}
+        renderItem={renderOrder}
+        ListHeaderComponent={
+          <>
+            <ScreenHeader title="Admin Orders" />
+            <ApiErrorBanner
+              title="Could not load orders"
+              message={loadErrorDetails?.message}
+              onRetry={() => void query.refetch()}
+            />
+            <ThemedButton
+              variant="secondary"
+              label={query.isFetching && !query.isLoading ? 'Refreshing...' : 'Refresh Orders'}
+              loading={query.isFetching && !isInitialLoading}
+              onPress={() => void query.refetch()}
+              disabled={busy}
+            />
+          </>
+        }
+        ListEmptyComponent={listEmpty}
+        isFetchingNextPage={isFetchingNextPage}
+        onLoadMore={loadMore}
         keyboardShouldPersistTaps="handled"
-        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
-        automaticallyAdjustKeyboardInsets>
-        <ScreenHeader title="Admin Orders" />
-        <ApiErrorBanner
-          title="Could not load orders"
-          message={loadErrorDetails?.message}
-          onRetry={refetch}
-        />
-        <Pressable style={[styles.secondaryButton, { borderColor }]} onPress={refetch} disabled={busy}>
-          <ThemedText>{isLoading ? 'Refreshing...' : 'Refresh Orders'}</ThemedText>
-        </Pressable>
-        {isLoading ? <ActivityIndicator /> : null}
-        {!isLoading && !loadErrorDetails && orders.length === 0 ? (
-          <ThemedText style={{ color: muted }}>No orders yet.</ThemedText>
-        ) : null}
-        {orders.map((order) => {
-          const terminal = isTerminalOrderStatus(order.status);
-          const actionsDisabled = busy || terminal;
-          const statusKey = normalizeOrderStatusKey(order.status);
-          const { isCustom, itemLabels, totalLabel } = getOrderListMeta(order);
-          return (
-            <ThemedView key={String(order.id)} style={[styles.card, { borderColor, backgroundColor: surface }]}>
-              <ThemedText type="defaultSemiBold">{formatOrderHeading(order)}</ThemedText>
-              {isCustom ? (
-                <ThemedText style={{ color: muted, fontSize: 13 }}>{CUSTOM_ORDER_BADGE}</ThemedText>
-              ) : null}
-              <ThemedText>Customer: {getOrderCustomerLabel(order)}</ThemedText>
-              <ThemedText>
-                Status: {formatOrderStatus(order.status)}
-                {terminal ? (
-                  <ThemedText style={{ color: muted }}> (final)</ThemedText>
-                ) : null}
-              </ThemedText>
-              <ThemedText>
-                Payment: {formatPaymentMethod(order.paymentMethod, order.walletProvider)}
-              </ThemedText>
-              <ThemedText>Address: {order.address}</ThemedText>
-              <ThemedText>Total: {totalLabel}</ThemedText>
-              <OrderItemsList title={isCustom ? 'Requested items' : 'Items'} labels={itemLabels} />
-              {order.status.toLowerCase() === 'cancelled' && order.cancellationReason ? (
-                <ThemedText style={{ color: muted }}>
-                  Cancellation reason: {order.cancellationReason}
-                </ThemedText>
-              ) : null}
-              {terminal ? (
-                <ThemedText style={[styles.terminalHint, { color: muted, backgroundColor: surfaceAlt, borderColor }]}>
-                  This order is {statusKey === 'cancelled' || statusKey === 'canceled' ? 'cancelled' : 'fulfilled'}.
-                  Status can no longer be changed.
-                </ThemedText>
-              ) : null}
-              <View style={styles.statusRow}>
-                <Pressable
-                  style={[
-                    styles.statusButton,
-                    actionsDisabled
-                      ? { backgroundColor: surfaceAlt, borderColor }
-                      : { borderColor, backgroundColor: surface },
-                  ]}
-                  onPress={() => handleStatusUpdate(String(order.id), 'processing', order.status)}
-                  accessibilityState={{ disabled: actionsDisabled }}>
-                  <ThemedText style={{ color: actionsDisabled ? muted : text }}>Processing</ThemedText>
-                </Pressable>
-                <Pressable
-                  style={[
-                    styles.statusButton,
-                    actionsDisabled
-                      ? { backgroundColor: surfaceAlt, borderColor }
-                      : { borderColor, backgroundColor: surface },
-                  ]}
-                  onPress={() => handleStatusUpdate(String(order.id), 'fulfilled', order.status)}
-                  accessibilityState={{ disabled: actionsDisabled }}>
-                  <ThemedText style={{ color: actionsDisabled ? muted : text }}>Fulfilled</ThemedText>
-                </Pressable>
-                <Pressable
-                  style={[
-                    styles.statusButton,
-                    actionsDisabled
-                      ? { backgroundColor: surfaceAlt, borderColor }
-                      : { borderColor: danger, backgroundColor: surface },
-                  ]}
-                  onPress={() => openCancelModal(String(order.id), order.status)}
-                  accessibilityState={{ disabled: actionsDisabled }}>
-                  <ThemedText style={{ color: actionsDisabled ? muted : danger }}>Cancel</ThemedText>
-                </Pressable>
-              </View>
-            </ThemedView>
-          );
-        })}
-      </ScrollView>
+        contentContainerStyle={paginatedListStyles.contentWide}
+      />
 
       <Modal visible={cancelModalVisible} transparent animationType="fade" onRequestClose={closeCancelModal}>
         <KeyboardAvoidingView
@@ -272,22 +284,21 @@ export default function AdminOrdersScreen() {
               error={cancelReasonError}
             />
             <View style={styles.modalActions}>
-              <Pressable
-                style={[styles.secondaryButton, { borderColor, flex: 1 }]}
+              <ThemedButton
+                variant="secondary"
+                label="Back"
                 onPress={closeCancelModal}
-                disabled={busy}>
-                <ThemedText>Back</ThemedText>
-              </Pressable>
-              <Pressable
-                style={[styles.button, { backgroundColor: danger, flex: 1 }, busy && styles.buttonDisabled]}
+                disabled={busy}
+                style={styles.modalActionButton}
+              />
+              <ThemedButton
+                variant="danger"
+                label="Confirm cancel"
+                loading={busy}
                 onPress={submitCancel}
-                disabled={busy}>
-                {busy ? (
-                  <ActivityIndicator color={primaryText} />
-                ) : (
-                  <ThemedText style={[styles.buttonText, { color: primaryText }]}>Confirm cancel</ThemedText>
-                )}
-              </Pressable>
+                disabled={busy}
+                style={styles.modalActionButton}
+              />
             </View>
           </ThemedView>
             </View>
@@ -300,33 +311,20 @@ export default function AdminOrdersScreen() {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1 },
-  container: {
-    flexGrow: 1,
-    padding: 16,
-    gap: 12,
-    width: '100%',
-    maxWidth: 860,
-    alignSelf: 'center',
-  },
   card: {
     borderWidth: 1,
     borderRadius: 10,
     padding: 12,
     gap: 8,
   },
-  secondaryButton: {
-    borderWidth: 1,
-    borderRadius: 8,
-    padding: 10,
-    alignItems: 'center',
+  statusRow: {
+    flexDirection: 'row',
+    gap: 8,
+    flexWrap: 'wrap',
   },
-  statusButton: {
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    alignItems: 'center',
+  statusActionButton: {
     minWidth: 96,
+    flexGrow: 1,
   },
   terminalHint: {
     fontSize: 13,
@@ -334,22 +332,6 @@ const styles = StyleSheet.create({
     padding: 10,
     borderRadius: 8,
     borderWidth: 1,
-  },
-  button: {
-    borderRadius: 8,
-    padding: 10,
-    alignItems: 'center',
-  },
-  buttonText: {
-    fontWeight: '700',
-  },
-  statusRow: {
-    flexDirection: 'row',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  buttonDisabled: {
-    opacity: 0.7,
   },
   modalOverlay: {
     flex: 1,
@@ -369,5 +351,8 @@ const styles = StyleSheet.create({
   modalActions: {
     flexDirection: 'row',
     gap: 10,
+  },
+  modalActionButton: {
+    flex: 1,
   },
 });

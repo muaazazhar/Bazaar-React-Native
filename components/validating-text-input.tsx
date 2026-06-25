@@ -4,7 +4,9 @@ import {
   TextInput,
   View,
   type KeyboardTypeOptions,
+  type StyleProp,
   type TextInputProps,
+  type TextStyle,
 } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
@@ -28,6 +30,9 @@ type ValidatingTextInputProps = {
   returnKeyType?: TextInputProps['returnKeyType'];
   blurOnSubmit?: boolean;
   onSubmitEditing?: TextInputProps['onSubmitEditing'];
+  minHeight?: number;
+  maxHeight?: number;
+  inputStyle?: StyleProp<TextStyle>;
 };
 
 export function ValidatingTextInput({
@@ -48,6 +53,9 @@ export function ValidatingTextInput({
   returnKeyType,
   blurOnSubmit,
   onSubmitEditing,
+  minHeight,
+  maxHeight,
+  inputStyle,
 }: ValidatingTextInputProps) {
   const resolvedReturnKeyType = returnKeyType ?? (multiline ? 'default' : 'done');
   const resolvedBlurOnSubmit = blurOnSubmit ?? !multiline;
@@ -80,11 +88,14 @@ export function ValidatingTextInput({
         style={[
           styles.input,
           multiline && styles.inputMultiline,
+          multiline && minHeight != null ? { minHeight } : null,
+          multiline && maxHeight != null ? { maxHeight } : null,
           {
             borderColor: error ? danger : borderColor,
             backgroundColor: inputBackground,
             color: inputText,
           },
+          inputStyle,
         ]}
         placeholder={placeholder}
         placeholderTextColor={muted}

@@ -4,6 +4,7 @@ import type { Order } from '@/types/domain';
 import type { AppDispatch } from '@/store/index';
 import type { NotifyInput } from '@/context/NotificationContext';
 import { buildReceiptRouteParams, isCustomOrder } from '@/utils/orderDisplay';
+import { NOTIFICATION_AFTER_NAV_DELAY_MS } from '@/utils/inAppNotify';
 import { queueReceiptForOrder } from '@/utils/receiptSession';
 
 type NotifyFn = (input: NotifyInput) => void;
@@ -54,6 +55,6 @@ export async function completeOrderPlacement(
 ): Promise<void> {
   await prefetchOrderReceipt(dispatch, order.id, options.onProgress);
   options.onBeforeNavigate?.();
-  options.notify(options.notification);
   navigateAfterOrderPlaced(order);
+  setTimeout(() => options.notify(options.notification), NOTIFICATION_AFTER_NAV_DELAY_MS);
 }

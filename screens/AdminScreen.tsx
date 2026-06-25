@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ScreenHeader } from '@/components/screen-header';
+import { ThemedButton } from '@/components/themed-button';
 import { ThemedText } from '@/components/themed-text';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useSessionBusy } from '@/hooks/use-session-busy';
@@ -16,8 +17,6 @@ export default function AdminScreen() {
 
   const borderColor = useThemeColor({}, 'border');
   const surface = useThemeColor({}, 'surface');
-  const primary = useThemeColor({}, 'primary');
-  const primaryText = useThemeColor({}, 'primaryText');
   const muted = useThemeColor({}, 'muted');
 
   const [loggingOut, setLoggingOut] = useState(false);
@@ -63,16 +62,14 @@ export default function AdminScreen() {
           <ThemedText style={[styles.smallText, { color: muted }]}>Payments, delivery, and popular products on the home screen.</ThemedText>
         </Pressable>
 
-        <Pressable
-          style={[styles.secondaryButton, { borderColor }, uiLocked && { opacity: 0.6 }]}
+        <ThemedButton
+          variant="secondary"
+          label={sessionBusy ? 'Finishing tasks…' : 'Logout'}
+          loading={loggingOut}
+          loadingLabel="Logging out…"
           onPress={handleLogout}
-          disabled={uiLocked}>
-          {loggingOut ? (
-            <ActivityIndicator />
-          ) : (
-            <ThemedText>{sessionBusy ? 'Finishing tasks…' : 'Logout'}</ThemedText>
-          )}
-        </Pressable>
+          disabled={uiLocked}
+        />
       </ScrollView>
     </SafeAreaView>
   );
@@ -107,19 +104,5 @@ const styles = StyleSheet.create({
   smallText: {
     fontSize: 13,
     lineHeight: 18,
-  },
-  button: {
-    borderRadius: 8,
-    padding: 12,
-    alignItems: 'center',
-  },
-  buttonText: {
-    fontWeight: '700',
-  },
-  secondaryButton: {
-    borderWidth: 1,
-    borderRadius: 8,
-    padding: 10,
-    alignItems: 'center',
   },
 });

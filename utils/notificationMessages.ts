@@ -86,3 +86,19 @@ export function categoryCreatedMessage(name: string) {
     variant: 'success' as const,
   };
 }
+
+export function productDeletedMessage(name: string) {
+  return {
+    title: 'Product deleted',
+    message: `"${name}" was removed from the catalog.`,
+    variant: 'success' as const,
+  };
+}
+
+export function categoryDeletedMessage(name: string) {
+  return {
+    title: 'Category deleted',
+    message: `"${name}" was removed from the catalog.`,
+    variant: 'success' as const,
+  };
+}

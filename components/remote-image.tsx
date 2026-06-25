@@ -1,7 +1,6 @@
 import { Image } from "expo-image";
 import { useState } from "react";
 import {
-  ActivityIndicator,
   ImageSourcePropType,
   StyleSheet,
   View,
@@ -9,7 +8,7 @@ import {
   type StyleProp,
 } from "react-native";
 
-import { useThemeColor } from "@/hooks/use-theme-color";
+import { SkeletonBlock } from "@/components/skeleton-block";
 
 type RemoteImageProps = {
   uri?: string | null;
@@ -26,8 +25,7 @@ export function RemoteImage({
   fallbackSource,
   recyclingKey,
 }: RemoteImageProps) {
-  const surfaceAlt = useThemeColor({}, "surfaceAlt");
-  const muted = useThemeColor({}, "muted");
+  const [layout, setLayout] = useState({ width: 0, height: 0 });
   const [loading, setLoading] = useState(Boolean(uri));
   const [failed, setFailed] = useState(false);
 
@@ -43,11 +41,14 @@ export function RemoteImage({
   const source = failed && fallbackSource ? fallbackSource : { uri };
 
   return (
-    <View style={[style, styles.wrapper]}>
-      {loading ? (
-        <View style={[styles.placeholder, { backgroundColor: surfaceAlt }]}>
-          <ActivityIndicator size="small" color={muted} />
-        </View>
+    <View
+      style={[style, styles.wrapper]}
+      onLayout={(event) => {
+        const { width, height } = event.nativeEvent.layout;
+        setLayout({ width, height });
+      }}>
+      {loading && layout.height > 0 ? (
+        <SkeletonBlock width={layout.width} height={layout.height} borderRadius={0} />
       ) : null}
       <Image
         source={source}
@@ -73,10 +74,5 @@ export function RemoteImage({
 const styles = StyleSheet.create({
   wrapper: {
     overflow: "hidden",
-  },
-  placeholder: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: "center",
-    justifyContent: "center",
   },
 });

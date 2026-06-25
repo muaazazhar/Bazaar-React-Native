@@ -1,12 +1,15 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useMemo } from "react";
-import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+
+import { DebouncedPressable } from "@/components/debounced-pressable";
 
 import { OrderTotalsBreakdown } from "@/components/order-totals-breakdown";
 import { RemoteImage } from "@/components/remote-image";
 import { ScreenHeader } from "@/components/screen-header";
+import { ThemedButton } from "@/components/themed-button";
 import { useGetStoreSettingsQuery } from "@/store/api/storeSettingsApi";
 import { getCheckoutTotals } from "@/utils/delivery";
 import { ThemedText } from "@/components/themed-text";
@@ -27,7 +30,6 @@ export default function CartScreen() {
   const borderColor = useThemeColor({}, "border");
   const surface = useThemeColor({}, "surface");
   const primary = useThemeColor({}, "primary");
-  const primaryText = useThemeColor({}, "primaryText");
   const danger = useThemeColor({}, "danger");
   const muted = useThemeColor({}, "muted");
   const surfaceAlt = useThemeColor({}, "surfaceAlt");
@@ -40,9 +42,9 @@ export default function CartScreen() {
 
           <View style={styles.headerRow}>
             <ThemedText type="title" style={styles.cartTitle}>Cart</ThemedText>
-            <Pressable onPress={clearCart} disabled={cart.length === 0}>
+            <DebouncedPressable onPress={clearCart} disabled={cart.length === 0}>
               <ThemedText style={{ color: cart.length === 0 ? muted : danger }}>Clear cart</ThemedText>
-            </Pressable>
+            </DebouncedPressable>
           </View>
 
           {cart.length === 0 ? (
@@ -75,20 +77,20 @@ export default function CartScreen() {
                     </View>
                   </View>
                   <View style={[styles.qtyBox, { borderColor }]}>
-                    <Pressable onPress={() => decreaseQuantity(item.product.id)} style={styles.qtyButton}>
+                    <DebouncedPressable onPress={() => decreaseQuantity(item.product.id)} style={styles.qtyButton}>
                       <ThemedText style={styles.qtySign}>-</ThemedText>
-                    </Pressable>
+                    </DebouncedPressable>
                     <ThemedText style={styles.qtyValue}>{item.quantity}</ThemedText>
-                    <Pressable onPress={() => increaseQuantity(item.product.id)} style={styles.qtyButton}>
+                    <DebouncedPressable onPress={() => increaseQuantity(item.product.id)} style={styles.qtyButton}>
                       <ThemedText style={styles.qtySign}>+</ThemedText>
-                    </Pressable>
+                    </DebouncedPressable>
                   </View>
                   {item.quantity <= 1 ? (
-                    <Pressable
+                    <DebouncedPressable
                       style={[styles.deleteIconWrap, { borderColor }]}
                       onPress={() => removeFromCart(item.product.id)}>
                       <Ionicons name="trash-outline" size={16} color={danger} />
-                    </Pressable>
+                    </DebouncedPressable>
                   ) : null}
                 </ThemedView>
               );
@@ -128,18 +130,13 @@ export default function CartScreen() {
               <ThemedText type="defaultSemiBold" style={styles.totalValue}>Rs. 0</ThemedText>
             </View>
           )}
-          <Pressable
-            style={[
-              styles.checkoutButton,
-              { backgroundColor: primary },
-              cart.length === 0 && styles.buttonDisabled,
-            ]}
+          <ThemedButton
+            variant="primary"
+            size="large"
+            label="Checkout"
+            disabled={cart.length === 0}
             onPress={() => router.push("/checkout")}
-            disabled={cart.length === 0}>
-            <ThemedText style={[styles.checkoutText, { color: primaryText }]}>
-              Checkout
-            </ThemedText>
-          </Pressable>
+          />
         </View>
       </View>
     </SafeAreaView>
@@ -267,18 +264,5 @@ const styles = StyleSheet.create({
   totalValue: {
     fontSize: 32,
     lineHeight: 34,
-  },
-  checkoutButton: {
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
-  checkoutText: {
-    fontSize: 22,
-    fontWeight: "700",
-    letterSpacing: 0.3,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
   },
 });

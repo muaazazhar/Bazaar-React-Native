@@ -15,6 +15,7 @@ import { ApiErrorBanner } from '@/components/api-feedback';
 import { PasswordUpdateFields } from '@/components/password-update-fields';
 import { useNotification } from '@/context/NotificationContext';
 import { ScreenHeader } from '@/components/screen-header';
+import { ThemedButton } from '@/components/themed-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { validatePassword, validatePasswordConfirm } from '@/constants/fieldLimits';
@@ -25,7 +26,7 @@ import {
   getPasswordResetToken,
 } from '@/store/passwordResetStorage';
 import { getApiErrorDetails } from '@/utils/apiError';
-import { notifySuccess } from '@/utils/inAppNotify';
+import { notifySuccessAfterNavigate } from '@/utils/inAppNotify';
 
 export default function ResetPasswordScreen() {
   const [resetPassword] = useResetPasswordMutation();
@@ -43,8 +44,6 @@ export default function ResetPasswordScreen() {
   }>({});
 
   const backgroundColor = useThemeColor({}, 'background');
-  const primary = useThemeColor({}, 'primary');
-  const primaryText = useThemeColor({}, 'primaryText');
   const muted = useThemeColor({}, 'muted');
   const danger = useThemeColor({}, 'danger');
 
@@ -81,10 +80,12 @@ export default function ResetPasswordScreen() {
         confirmPassword,
       }).unwrap();
       await clearPasswordResetStorage();
-      notifySuccess(notify, result.message || 'Password updated. You can sign in now.', {
-        title: 'Password reset',
-      });
-      router.replace('/login');
+      notifySuccessAfterNavigate(
+        notify,
+        result.message || 'Password updated. You can sign in now.',
+        () => router.replace('/login'),
+        { title: 'Password reset' },
+      );
     } catch (err) {
       const details = getApiErrorDetails(err, 'Could not update password. Please try again.');
       setError(details.message);
@@ -143,18 +144,12 @@ export default function ResetPasswordScreen() {
 
               <ApiErrorBanner title="Reset password" message={error || null} />
 
-              <Pressable
-                style={[styles.button, { backgroundColor: primary }, loading && styles.buttonDisabled]}
+              <ThemedButton
+                variant="primary"
+                label="Update password"
+                loading={loading}
                 onPress={handleSubmit}
-                disabled={loading}>
-                {loading ? (
-                  <ActivityIndicator color={primaryText} />
-                ) : (
-                  <ThemedText style={[styles.buttonText, { color: primaryText }]}>
-                    Update password
-                  </ThemedText>
-                )}
-              </Pressable>
+              />
 
               <Pressable onPress={() => router.replace('/forgot-password')}>
                 <ThemedText type="link" style={{ color: danger }}>
@@ -181,12 +176,4 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   helperText: { lineHeight: 20 },
-  button: {
-    borderRadius: 10,
-    padding: 14,
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  buttonText: { fontWeight: '700' },
-  buttonDisabled: { opacity: 0.55 },
 });

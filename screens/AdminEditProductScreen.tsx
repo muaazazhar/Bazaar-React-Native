@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { CategoryChipPicker } from '@/components/category-chip-picker';
+import { ProductListSkeleton } from '@/components/catalog-skeletons';
 import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 import { useNotification } from '@/context/NotificationContext';
 import { ImagePickerField } from '@/components/image-picker-field';
 import { RemoteImage } from '@/components/remote-image';
 import { ScreenHeader } from '@/components/screen-header';
+import { ThemedButton } from '@/components/themed-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { ValidatingTextInput } from '@/components/validating-text-input';
@@ -18,12 +21,8 @@ import {
   validateRequired,
 } from '@/constants/fieldLimits';
 import { useThemeColor } from '@/hooks/use-theme-color';
-import {
-  useGetCategoriesQuery,
-  useGetProductsQuery,
-  useUpdateProductMutation,
-} from '@/store/api/catalogApi';
-import { notifyAdminApiFailure } from '@/utils/inAppNotify';
+import { useGetProductQuery, useUpdateProductMutation } from '@/store/api/catalogApi';
+import { notifyAdminApiFailure, notifyAfterNavigateBack } from '@/utils/inAppNotify';
 import { productUpdatedMessage } from '@/utils/notificationMessages';
 import { getImagePart, pickImageFromLibrary } from '@/utils/imageUpload';
 import { resolveProductCategoryId } from '@/utils/productCategory';
@@ -39,12 +38,13 @@ export default function AdminEditProductScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const productId = typeof id === 'string' ? id : '';
 
-  const { data: products = [], isLoading: productsLoading } = useGetProductsQuery();
-  const { data: categories = [], isFetching: categoriesFetching } = useGetCategoriesQuery();
+  const {
+    data: product,
+    isLoading: productLoading,
+    isError: productError,
+  } = useGetProductQuery(productId, { skip: !productId });
   const [updateProduct] = useUpdateProductMutation();
   const { notify } = useNotification();
-
-  const product = products.find((item) => String(item.id) === productId);
 
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
@@ -57,8 +57,6 @@ export default function AdminEditProductScreen() {
 
   const borderColor = useThemeColor({}, 'border');
   const surface = useThemeColor({}, 'surface');
-  const primary = useThemeColor({}, 'primary');
-  const primaryText = useThemeColor({}, 'primaryText');
   const muted = useThemeColor({}, 'muted');
   const danger = useThemeColor({}, 'danger');
 
@@ -75,17 +73,17 @@ export default function AdminEditProductScreen() {
     setName(product.name);
     setPrice(String(product.price));
     setDiscountPercent(String(product.discountPercent ?? 0));
-    setCategoryId(resolveProductCategoryId(product, categories));
+    setCategoryId(resolveProductCategoryId(product));
     hydratedProductIdRef.current = productId;
-  }, [product, productId, categories]);
+  }, [product, productId]);
 
   useEffect(() => {
     if (!product || categoryId) return;
-    const resolved = resolveProductCategoryId(product, categories);
+    const resolved = resolveProductCategoryId(product);
     if (resolved) {
       setCategoryId(resolved);
     }
-  }, [product, categories, categoryId]);
+  }, [product, categoryId]);
 
   const pickImage = () =>
     pickImageFromLibrary({
@@ -105,8 +103,7 @@ export default function AdminEditProductScreen() {
     if (priceError) errors.price = priceError;
     const discountError = validateDiscount(discountPercent);
     if (discountError) errors.discount = discountError;
-    const effectiveCategoryId =
-      categoryId ?? resolveProductCategoryId(product, categories);
+    const effectiveCategoryId = categoryId ?? resolveProductCategoryId(product);
     if (!effectiveCategoryId) {
       errors.category = 'Category is mandatory for a product.';
     }
@@ -124,8 +121,7 @@ export default function AdminEditProductScreen() {
         formData.append('image', getImagePart(newImageUri) as any);
       }
       await updateProduct({ id: productId, body: formData }).unwrap();
-      notify(productUpdatedMessage(name.trim()));
-      router.back();
+      notifyAfterNavigateBack(notify, productUpdatedMessage(name.trim()));
     } catch (error) {
       notifyAdminApiFailure(notify, error, 'Could not update product. Please try again.', {
         title: 'Update failed',
@@ -137,22 +133,31 @@ export default function AdminEditProductScreen() {
     }
   };
 
-  if (productsLoading && !product) {
+  if (!productId) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        <ActivityIndicator style={{ marginTop: 24 }} />
+        <ScreenHeader title="Edit Product" />
+        <ThemedText style={{ color: danger, padding: 16 }}>Invalid product.</ThemedText>
+        <ThemedButton variant="secondary" label="Go back" onPress={() => router.back()} style={{ marginHorizontal: 16 }} />
       </SafeAreaView>
     );
   }
 
-  if (!product) {
+  if (productLoading) {
+    return (
+      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+        <ScreenHeader title="Edit Product" />
+        <ProductListSkeleton count={1} />
+      </SafeAreaView>
+    );
+  }
+
+  if (productError || !product) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
         <ScreenHeader title="Edit Product" />
         <ThemedText style={{ color: danger, padding: 16 }}>Product not found.</ThemedText>
-        <Pressable style={[styles.secondaryButton, { borderColor, marginHorizontal: 16 }]} onPress={() => router.back()}>
-          <ThemedText>Go back</ThemedText>
-        </Pressable>
+        <ThemedButton variant="secondary" label="Go back" onPress={() => router.back()} style={{ marginHorizontal: 16 }} />
       </SafeAreaView>
     );
   }
@@ -197,42 +202,16 @@ export default function AdminEditProductScreen() {
           />
 
           <ThemedText type="defaultSemiBold">Category</ThemedText>
-          {fieldErrors.category ? (
-            <ThemedText style={{ color: danger, fontSize: 12 }}>{fieldErrors.category}</ThemedText>
-          ) : null}
-          {categoriesFetching ? (
-            <ThemedText style={{ color: muted }}>Loading categories...</ThemedText>
-          ) : (
-            <View style={styles.chipsRow}>
-              {categories.map((category) => (
-                <Pressable
-                  key={category.id}
-                  style={[
-                    styles.categoryChip,
-                    { borderColor },
-                    categoryId != null &&
-                      String(categoryId) === String(category.id) && {
-                        backgroundColor: primary,
-                        borderColor: primary,
-                      },
-                  ]}
-                  onPress={() => {
-                    setCategoryId(String(category.id));
-                    if (fieldErrors.category) setFieldErrors((p) => ({ ...p, category: undefined }));
-                  }}
-                  disabled={busy}>
-                  <ThemedText
-                    style={
-                      categoryId != null && String(categoryId) === String(category.id)
-                        ? { color: primaryText }
-                        : undefined
-                    }>
-                    {category.name}
-                  </ThemedText>
-                </Pressable>
-              ))}
-            </View>
-          )}
+          <CategoryChipPicker
+            selectedId={categoryId}
+            pinnedCategory={product.category ?? null}
+            onSelect={(id) => {
+              setCategoryId(id);
+              if (fieldErrors.category) setFieldErrors((p) => ({ ...p, category: undefined }));
+            }}
+            disabled={busy}
+            error={fieldErrors.category}
+          />
 
           {product.imageUrl && !newImageUri ? (
             <View style={styles.currentImageBlock}>
@@ -258,16 +237,13 @@ export default function AdminEditProductScreen() {
             previewStyle={styles.preview}
           />
 
-          <Pressable
-            style={[styles.button, { backgroundColor: primary }, busy && styles.buttonDisabled]}
+          <ThemedButton
+            variant="primary"
+            label="Update Product"
+            loading={busy}
             onPress={handleUpdate}
-            disabled={busy}>
-            {busy ? (
-              <ActivityIndicator color={primaryText} />
-            ) : (
-              <ThemedText style={[styles.buttonText, { color: primaryText }]}>Update Product</ThemedText>
-            )}
-          </Pressable>
+            disabled={busy}
+          />
         </ThemedView>
       </KeyboardAwareScroll>
     </SafeAreaView>
@@ -290,40 +266,12 @@ const styles = StyleSheet.create({
     padding: 12,
     gap: 10,
   },
-  chipsRow: {
-    flexDirection: 'row',
-    gap: 8,
-    flexWrap: 'wrap',
-  },
-  categoryChip: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-  },
   currentImageBlock: {
     gap: 8,
-  },
-  button: {
-    borderRadius: 10,
-    padding: 12,
-    alignItems: 'center',
-  },
-  secondaryButton: {
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 10,
-    alignItems: 'center',
-  },
-  buttonText: {
-    fontWeight: '700',
   },
   preview: {
     width: 108,
     height: 108,
     borderRadius: 12,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
   },
 });

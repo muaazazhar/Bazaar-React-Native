@@ -1,21 +1,23 @@
 import { useEffect, useRef } from 'react';
 
 import { useNotification } from '@/context/NotificationContext';
-import { useGetMyOrdersQuery } from '@/store/api/ordersApi';
+import { useGetMyOrdersPreviewQuery } from '@/store/api/ordersApi';
 import { useAppSelector } from '@/store/hooks';
 import { orderStatusUpdatedMessage } from '@/utils/notificationMessages';
 
 const POLL_INTERVAL_MS = 25_000;
 
 /**
- * Polls the customer's orders and shows in-app notifications when status changes.
+ * Polls the latest orders page and shows in-app notifications when status changes.
  */
 export function OrderStatusWatcher() {
   const user = useAppSelector((state) => state.auth.user);
   const hydrated = useAppSelector((state) => state.auth.hydrated);
   const { notify } = useNotification();
-  const { data: orders = [] } = useGetMyOrdersQuery(undefined, {
-    skip: !hydrated || !user || user.role === 'admin',
+  const skip = !hydrated || !user || user.role === 'admin';
+
+  const { data: orders = [] } = useGetMyOrdersPreviewQuery(undefined, {
+    skip,
     pollingInterval: POLL_INTERVAL_MS,
     refetchOnMountOrArgChange: true,
     refetchOnFocus: true,

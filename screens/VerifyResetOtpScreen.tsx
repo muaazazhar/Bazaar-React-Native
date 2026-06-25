@@ -1,7 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -15,6 +14,7 @@ import { ApiErrorBanner } from '@/components/api-feedback';
 import { useNotification } from '@/context/NotificationContext';
 import { ValidatingTextInput } from '@/components/validating-text-input';
 import { ScreenHeader } from '@/components/screen-header';
+import { ThemedButton } from '@/components/themed-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { FIELD_LIMITS } from '@/constants/fieldLimits';
@@ -24,7 +24,7 @@ import {
   getPasswordResetEmail,
   savePasswordResetSession,
 } from '@/store/passwordResetStorage';
-import { notifyApiFailure } from '@/utils/inAppNotify';
+import { notifyApiFailure, notifySuccess } from '@/utils/inAppNotify';
 import {
   getResendCooldownSeconds,
   isResendCooldownError,
@@ -44,15 +44,11 @@ export default function VerifyResetOtpScreen() {
   const [email, setEmail] = useState(typeof emailParam === 'string' ? emailParam.trim() : '');
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
-  const [info, setInfo] = useState('');
   const [sending, setSending] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(() => parseResendParam(resendInParam));
 
-  const borderColor = useThemeColor({}, 'border');
   const backgroundColor = useThemeColor({}, 'background');
-  const primary = useThemeColor({}, 'primary');
-  const primaryText = useThemeColor({}, 'primaryText');
   const muted = useThemeColor({}, 'muted');
   const danger = useThemeColor({}, 'danger');
 
@@ -81,7 +77,9 @@ export default function VerifyResetOtpScreen() {
     setError('');
     try {
       const result = await resendResetOtp({ email }).unwrap();
-      setInfo(result.message || 'Reset code sent to your email.');
+      notifySuccess(notify, result.message || 'Reset code sent to your email.', {
+        title: 'Reset password',
+      });
       setSecondsLeft(result.resendAvailableInSeconds);
     } catch (err) {
       if (isResendCooldownError(err)) {
@@ -145,11 +143,7 @@ export default function VerifyResetOtpScreen() {
         <ThemedView style={[styles.container, { backgroundColor }]}>
           <ScreenHeader title="Verify Code" />
           <ThemedText style={{ color: danger }}>No email provided.</ThemedText>
-          <Pressable
-            style={[styles.button, { backgroundColor: primary }]}
-            onPress={() => router.replace('/forgot-password')}>
-            <ThemedText style={[styles.buttonText, { color: primaryText }]}>Start over</ThemedText>
-          </Pressable>
+          <ThemedButton variant="primary" label="Start over" onPress={() => router.replace('/forgot-password')} />
         </ThemedView>
       </SafeAreaView>
     );
@@ -186,38 +180,23 @@ export default function VerifyResetOtpScreen() {
                 autoCapitalize="none"
               />
 
-              {info ? <ThemedText style={{ color: muted }}>{info}</ThemedText> : null}
               <ApiErrorBanner title="Reset password" message={error || null} />
 
-              <Pressable
-                style={[
-                  styles.button,
-                  { backgroundColor: primary },
-                  (verifying || code.length !== FIELD_LIMITS.verificationCode) && styles.buttonDisabled,
-                ]}
+              <ThemedButton
+                variant="primary"
+                label="Continue"
+                loading={verifying}
+                disabled={code.length !== FIELD_LIMITS.verificationCode}
                 onPress={handleVerify}
-                disabled={verifying || code.length !== FIELD_LIMITS.verificationCode}>
-                {verifying ? (
-                  <ActivityIndicator color={primaryText} />
-                ) : (
-                  <ThemedText style={[styles.buttonText, { color: primaryText }]}>
-                    Continue
-                  </ThemedText>
-                )}
-              </Pressable>
+              />
 
-              <Pressable
-                style={[styles.secondaryButton, { borderColor }, resendDisabled && styles.buttonDisabled]}
+              <ThemedButton
+                variant="secondary"
+                label={resendLabel}
+                loading={sending}
+                disabled={resendDisabled}
                 onPress={handleResend}
-                disabled={resendDisabled}>
-                {sending && secondsLeft === 0 ? (
-                  <ActivityIndicator color={muted} />
-                ) : (
-                  <ThemedText style={secondsLeft > 0 ? { color: muted } : undefined}>
-                    {resendLabel}
-                  </ThemedText>
-                )}
-              </Pressable>
+              />
 
               <Pressable onPress={() => router.replace('/forgot-password')}>
                 <ThemedText type="link">Use a different email</ThemedText>
@@ -243,19 +222,4 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   helperText: { lineHeight: 20 },
-  button: {
-    borderRadius: 10,
-    padding: 14,
-    alignItems: 'center',
-  },
-  secondaryButton: {
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 12,
-    alignItems: 'center',
-    minHeight: 48,
-    justifyContent: 'center',
-  },
-  buttonText: { fontWeight: '700' },
-  buttonDisabled: { opacity: 0.55 },
 });

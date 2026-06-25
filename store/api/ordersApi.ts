@@ -1,7 +1,7 @@
 import { baseApi } from '@/store/api/baseApi';
 import type { Order, PaymentMethod, WalletProvider } from '@/types/domain';
 import { normalizeOrder } from '@/utils/orderDisplay';
-import { mapArrayResponse } from '@/utils/rtkResponse';
+import { buildPagedUrl, PAGE_LIMITS, parsePaginatedPage, type PaginatedPage } from '@/utils/pagination';
 import { normalizeReceipt, type Receipt } from '@/utils/receipt';
 
 export type { Receipt };
@@ -54,22 +54,6 @@ export const ordersApi = baseApi.injectEndpoints({
       transformResponse: (response: unknown) => normalizeOrder(response),
       invalidatesTags: [{ type: 'Order', id: 'LIST' }],
     }),
-    getMyOrders: builder.query<Order[], void>({
-      query: () => '/api/orders/my',
-      transformResponse: (response: unknown) => mapArrayResponse(response, normalizeOrder),
-      providesTags: (result) =>
-        result
-          ? [{ type: 'Order', id: 'LIST' }, ...result.map((order) => ({ type: 'Order' as const, id: String(order.id) }))]
-          : [{ type: 'Order', id: 'LIST' }],
-    }),
-    getAllOrders: builder.query<Order[], void>({
-      query: () => '/api/orders',
-      transformResponse: (response: unknown) => mapArrayResponse(response, normalizeOrder),
-      providesTags: (result) =>
-        result
-          ? [{ type: 'Order', id: 'LIST' }, ...result.map((order) => ({ type: 'Order' as const, id: String(order.id) }))]
-          : [{ type: 'Order', id: 'LIST' }],
-    }),
     updateOrderStatus: builder.mutation<
       Order,
       { id: string; status: OrderStatus; cancellationReason?: string }
@@ -97,13 +81,40 @@ export const ordersApi = baseApi.injectEndpoints({
       transformResponse: (response: unknown) => normalizeReceipt(response),
       providesTags: (_result, _error, arg) => [{ type: 'Receipt', id: arg.id }],
     }),
+    getMyOrdersPreview: builder.query<Order[], void>({
+      query: () => buildPagedUrl('/api/orders/my', 1, PAGE_LIMITS.orders),
+      transformResponse: (response) =>
+        parsePaginatedPage(response, normalizeOrder, 1, PAGE_LIMITS.orders).items,
+      providesTags: [{ type: 'Order', id: 'LIST' }],
+    }),
+    getMyOrderPages: builder.infiniteQuery<PaginatedPage<Order>, void, number>({
+      infiniteQueryOptions: {
+        initialPageParam: 1,
+        getNextPageParam: (lastPage) => (lastPage.hasMore ? lastPage.page + 1 : undefined),
+      },
+      query: ({ pageParam }) => buildPagedUrl('/api/orders/my', pageParam, PAGE_LIMITS.orders),
+      transformResponse: (response, _meta, arg) =>
+        parsePaginatedPage(response, normalizeOrder, arg.pageParam, PAGE_LIMITS.orders),
+      providesTags: [{ type: 'Order', id: 'LIST' }],
+    }),
+    getAllOrderPages: builder.infiniteQuery<PaginatedPage<Order>, void, number>({
+      infiniteQueryOptions: {
+        initialPageParam: 1,
+        getNextPageParam: (lastPage) => (lastPage.hasMore ? lastPage.page + 1 : undefined),
+      },
+      query: ({ pageParam }) => buildPagedUrl('/api/orders', pageParam, PAGE_LIMITS.orders),
+      transformResponse: (response, _meta, arg) =>
+        parsePaginatedPage(response, normalizeOrder, arg.pageParam, PAGE_LIMITS.orders),
+      providesTags: [{ type: 'Order', id: 'LIST' }],
+    }),
   }),
 });
 
 export const {
   usePlaceOrderMutation,
-  useGetMyOrdersQuery,
-  useGetAllOrdersQuery,
   useUpdateOrderStatusMutation,
   useGetReceiptQuery,
+  useGetMyOrdersPreviewQuery,
+  useGetMyOrderPagesInfiniteQuery,
+  useGetAllOrderPagesInfiniteQuery,
 } = ordersApi;

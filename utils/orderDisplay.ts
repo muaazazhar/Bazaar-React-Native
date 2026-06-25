@@ -1,4 +1,5 @@
 import type { Order, OrderItem, OrderType, PaymentMethod, WalletProvider } from '@/types/domain';
+import { formatUserDisplayName, nonEmptyText, resolvePersonNames } from '@/utils/userDisplay';
 
 const PAYMENT_LABELS: Record<PaymentMethod, string> = {
   cash_on_delivery: 'Cash on Delivery',
@@ -54,6 +55,54 @@ function normalizeOrderItem(raw: unknown): OrderItem {
   };
 }
 
+function parseOrderUserFromRecord(record: Record<string, unknown>): Order['user'] | undefined {
+  const userRaw = record.user;
+  if (userRaw && typeof userRaw === 'object') {
+    const u = userRaw as Record<string, unknown>;
+    const { firstName, lastName } = resolvePersonNames(
+      u.firstName ?? u.first_name,
+      u.lastName ?? u.last_name,
+      u.name ?? u.fullName ?? u.full_name,
+    );
+    return {
+      id: String(u.id ?? ''),
+      email: String(u.email ?? ''),
+      username: u.username != null ? String(u.username) : undefined,
+      firstName,
+      lastName,
+      phone: nonEmptyText(u.phone ?? u.phone_number),
+    };
+  }
+
+  const email = nonEmptyText(record.customerEmail ?? record.customer_email);
+  const phone = nonEmptyText(record.customerPhone ?? record.customer_phone);
+  const legacyName = nonEmptyText(
+    record.customerName ?? record.customer_name ?? record.customerUsername ?? record.customer_username,
+  );
+  const { firstName, lastName } = resolvePersonNames(
+    record.customerFirstName ?? record.customer_first_name,
+    record.customerLastName ?? record.customer_last_name,
+    legacyName,
+  );
+  if (!email && !phone && !firstName && !lastName && !legacyName) {
+    return undefined;
+  }
+
+  return {
+    id: String(record.userId ?? ''),
+    email: email ?? '',
+    username:
+      record.customerUsername != null
+        ? String(record.customerUsername)
+        : record.customer_username != null
+          ? String(record.customer_username)
+          : undefined,
+    firstName,
+    lastName,
+    phone,
+  };
+}
+
 export function normalizeOrder(raw: unknown): Order {
   const record = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const totalRaw = record.total ?? record.totalAmount ?? record.total_amount;
@@ -63,31 +112,7 @@ export function normalizeOrder(raw: unknown): Order {
   const deliveryRaw = record.deliveryCharge ?? record.delivery_charge;
   const deliveryCharge = deliveryRaw != null ? Number(deliveryRaw) : undefined;
 
-  const userRaw = record.user;
-  let user: Order['user'];
-  if (userRaw && typeof userRaw === 'object') {
-    const u = userRaw as Record<string, unknown>;
-    const phoneRaw = u.phone ?? u.phone_number;
-    user = {
-      id: String(u.id ?? ''),
-      email: String(u.email ?? ''),
-      username: u.username != null ? String(u.username) : undefined,
-      phone:
-        phoneRaw != null && String(phoneRaw).trim() !== ''
-          ? String(phoneRaw).trim()
-          : undefined,
-    };
-  } else if (typeof record.customerEmail === 'string' && record.customerEmail) {
-    const phoneRaw = record.customerPhone ?? record.customer_phone;
-    user = {
-      id: String(record.userId ?? ''),
-      email: record.customerEmail,
-      phone:
-        phoneRaw != null && String(phoneRaw).trim() !== ''
-          ? String(phoneRaw).trim()
-          : undefined,
-    };
-  }
+  const user = parseOrderUserFromRecord(record);
 
   const itemsRaw = record.items;
   let items = Array.isArray(itemsRaw) ? itemsRaw.map(normalizeOrderItem) : [];
@@ -211,7 +236,7 @@ export function getOrderListMeta(order: Order) {
   return {
     isCustom: custom,
     itemLabels: getOrderItemLabels(order),
-    totalLabel: custom ? CUSTOM_ORDER_TOTAL_LABEL : `Rs ${order.total.toLocaleString()}`,
+    totalLabel: formatOrderTotalLabel(order),
   };
 }
 
@@ -230,14 +255,29 @@ export function buildReceiptRouteParams(order: Pick<Order, 'id' | 'paymentMethod
   return params;
 }
 
-export function getOrderCustomerLabel(order: Order): string {
-  const phone = order.user?.phone?.trim();
-  if (phone) return phone;
-  const email = order.user?.email?.trim();
-  if (email) return email;
-  const username = order.user?.username?.trim();
-  if (username) return username;
-  return 'Customer';
+export type OrderCustomerDetails = {
+  firstName: string | null;
+  lastName: string | null;
+  displayName: string;
+  phone: string | null;
+  email: string | null;
+};
+
+const MISSING_CUSTOMER_VALUE = '—';
+
+export function getOrderCustomerDetails(order: Order): OrderCustomerDetails {
+  const user = order.user;
+  return {
+    firstName: nonEmptyText(user?.firstName) ?? null,
+    lastName: nonEmptyText(user?.lastName) ?? null,
+    displayName: formatUserDisplayName(user, MISSING_CUSTOMER_VALUE),
+    phone: nonEmptyText(user?.phone) ?? null,
+    email: nonEmptyText(user?.email) ?? null,
+  };
+}
+
+export function formatOrderCustomerField(value: string | null | undefined): string {
+  return nonEmptyText(value) ?? MISSING_CUSTOMER_VALUE;
 }
 
 export function normalizeOrderStatusKey(status: string): string {

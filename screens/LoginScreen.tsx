@@ -3,7 +3,6 @@ import { router } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { useState } from "react";
 import {
-  ActivityIndicator,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -14,9 +13,11 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ApiErrorBanner } from "@/components/api-feedback";
+import { NameFieldsRow } from "@/components/name-fields-row";
 import { ValidatingTextInput } from "@/components/validating-text-input";
 import { ScreenHeader } from "@/components/screen-header";
-import { FIELD_LIMITS, validateEmail, validatePassword, validatePhone, validateRequired } from "@/constants/fieldLimits";
+import { ThemedButton } from "@/components/themed-button";
+import { FIELD_LIMITS, validateEmail, validatePassword, validatePersonName, validatePhone, validateRequired } from "@/constants/fieldLimits";
 import { getApiErrorDetails, logApiError } from "@/utils/apiError";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
@@ -30,10 +31,12 @@ import {
 import {
   clearStoredAuthSession,
   persistAuthSession,
+  toStoredAuthUser,
 } from "@/store/authStorage";
 import { savePendingEmail } from "@/store/verificationStorage";
 import {
   getEmailFromApiError,
+  getLoginErrorMessage,
   getResendCooldownSeconds,
   isEmailNotVerifiedError,
 } from "@/utils/authApiErrors";
@@ -121,6 +124,8 @@ export default function LoginScreen() {
   const [identifier, setIdentifier] = useState("");
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -131,13 +136,13 @@ export default function LoginScreen() {
   const [fieldErrors, setFieldErrors] = useState<{
     identifier?: string;
     username?: string;
+    firstName?: string;
+    lastName?: string;
     email?: string;
     phone?: string;
     password?: string;
   }>({});
   const borderColor = useThemeColor({}, "border");
-  const primary = useThemeColor({}, "primary");
-  const primaryText = useThemeColor({}, "primaryText");
   const muted = useThemeColor({}, "muted");
   const googleAuthPath =
     process.env.EXPO_PUBLIC_GOOGLE_AUTH_START_PATH?.trim() || "/auth/google";
@@ -175,7 +180,7 @@ export default function LoginScreen() {
       }),
     );
     await persistAuthSession({
-      user: loginData.user,
+      user: toStoredAuthUser(loginData.user),
       token: loginData.access_token,
     });
     routeAfterAuth(loginData.user);
@@ -186,12 +191,18 @@ export default function LoginScreen() {
     const errors: {
       identifier?: string;
       username?: string;
+      firstName?: string;
+      lastName?: string;
       email?: string;
       phone?: string;
       password?: string;
     } = {};
 
     if (isRegisterMode) {
+      const firstNameError = validatePersonName(firstName, "First name");
+      if (firstNameError) errors.firstName = firstNameError;
+      const lastNameError = validatePersonName(lastName, "Last name");
+      if (lastNameError) errors.lastName = lastNameError;
       const usernameError = validateRequired(username, "Username");
       if (usernameError) errors.username = usernameError;
       const emailError = validateEmail(email);
@@ -215,6 +226,8 @@ export default function LoginScreen() {
       if (isRegisterMode) {
         const registered = await registerMutation({
           username: username.trim(),
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
           email: email.trim(),
           phone: phone.trim(),
           password,
@@ -253,12 +266,9 @@ export default function LoginScreen() {
         }
       }
       logApiError(isRegisterMode ? "POST /api/auth/register" : "POST /api/auth/login", err);
-      const details = getApiErrorDetails(
-        err,
-        isRegisterMode
-          ? "Signup failed. Please try again."
-          : "Login failed. Please check your credentials.",
-      );
+      const details = isRegisterMode
+        ? getApiErrorDetails(err, "Signup failed. Please try again.")
+        : { message: getLoginErrorMessage(err) };
       setError(details.message);
     } finally {
       setLoading(false);
@@ -409,6 +419,24 @@ export default function LoginScreen() {
             ) : null}
             {isRegisterMode ? (
               <>
+                <NameFieldsRow
+                  firstName={firstName}
+                  lastName={lastName}
+                  onFirstNameChange={(text) => {
+                    setFirstName(text);
+                    if (fieldErrors.firstName) {
+                      setFieldErrors((prev) => ({ ...prev, firstName: undefined }));
+                    }
+                  }}
+                  onLastNameChange={(text) => {
+                    setLastName(text);
+                    if (fieldErrors.lastName) {
+                      setFieldErrors((prev) => ({ ...prev, lastName: undefined }));
+                    }
+                  }}
+                  firstNameError={fieldErrors.firstName}
+                  lastNameError={fieldErrors.lastName}
+                />
                 <ValidatingTextInput
                   label="Username"
                   placeholder="Choose a username"
@@ -495,30 +523,22 @@ export default function LoginScreen() {
                 <ThemedText type="link">Forgot password?</ThemedText>
               </Pressable>
             ) : null}
-            <ApiErrorBanner title="Sign in" message={error || null} />
-            <Pressable
-              style={[
-                styles.button,
-                { backgroundColor: primary },
-                (loading || googleLoading) && styles.buttonDisabled,
-              ]}
+            <ApiErrorBanner title={isRegisterMode ? "Sign up" : "Sign in"} message={error || null} />
+            <ThemedButton
+              variant="primary"
+              label={isRegisterMode ? "Create Account" : "Sign In"}
+              loading={loading}
+              disabled={googleLoading}
               onPress={handleSubmit}
+            />
+            <ThemedButton
+              variant="secondary"
+              label={
+                isRegisterMode
+                  ? "Already have an account? Login"
+                  : "New user? Create account"
+              }
               disabled={loading || googleLoading}
-            >
-              {loading ? (
-                <ActivityIndicator color={primaryText} />
-              ) : (
-                <ThemedText style={[styles.buttonText, { color: primaryText }]}>
-                  {isRegisterMode ? "Create Account" : "Sign In"}
-                </ThemedText>
-              )}
-            </Pressable>
-            <Pressable
-              style={[
-                styles.secondaryButton,
-                { borderColor },
-                (loading || googleLoading) && styles.buttonDisabled,
-              ]}
               onPress={() => {
                 const nextMode = !isRegisterMode;
                 setIsRegisterMode(nextMode);
@@ -530,18 +550,13 @@ export default function LoginScreen() {
                   setIdentifier("");
                 } else {
                   setUsername("");
+                  setFirstName("");
+                  setLastName("");
                   setEmail("");
                   setPhone("");
                 }
               }}
-              disabled={loading || googleLoading}
-            >
-              <ThemedText>
-                {isRegisterMode
-                  ? "Already have an account? Login"
-                  : "New user? Create account"}
-              </ThemedText>
-            </Pressable>
+            />
             {!isRegisterMode ? (
               <Pressable
                 style={[styles.googleButton, { borderColor, opacity: 0.6 }]}
@@ -586,25 +601,6 @@ const styles = StyleSheet.create({
     // color set from theme token
     marginTop: -4,
   },
-  button: {
-    borderRadius: 8,
-    padding: 12,
-    alignItems: "center",
-    marginTop: 8,
-  },
-  buttonText: {
-    fontWeight: "700",
-  },
-  error: {
-    // color set from theme token
-  },
-  secondaryButton: {
-    borderWidth: 1,
-    // border color set from theme token
-    borderRadius: 8,
-    padding: 10,
-    alignItems: "center",
-  },
   googleButton: {
     borderWidth: 1,
     borderRadius: 8,
@@ -618,8 +614,5 @@ const styles = StyleSheet.create({
   forgotLink: {
     alignSelf: "flex-start",
     paddingVertical: 2,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
   },
 });

@@ -37,6 +37,7 @@ type NotificationContextValue = {
   current: InAppNotification | null;
   notify: (input: NotifyInput) => void;
   dismiss: (id?: string) => void;
+  clearAll: () => void;
 };
 
 const DEFAULT_DURATION_MS = 4500;
@@ -75,6 +76,12 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     },
     [current?.id, showNext],
   );
+
+  const clearAll = useCallback(() => {
+    clearTimer();
+    queueRef.current = [];
+    setCurrent(null);
+  }, [clearTimer]);
 
   useEffect(() => {
     if (!current) {
@@ -115,8 +122,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       current,
       notify,
       dismiss,
+      clearAll,
     }),
-    [current, notify, dismiss],
+    [current, notify, dismiss, clearAll],
   );
 
   return <NotificationContext.Provider value={value}>{children}</NotificationContext.Provider>;

@@ -1,14 +1,19 @@
-import { ScrollView, StyleSheet } from 'react-native';
+import { useCallback } from 'react';
+import { StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ApiErrorBanner } from '@/components/api-feedback';
-import { CatalogProductList } from '@/components/catalog-product-list';
-import { QueryLoadBody } from '@/components/query-load-body';
+import { ProductListSkeleton } from '@/components/catalog-skeletons';
+import { CatalogProductCard } from '@/components/catalog-product-list';
+import { ListEmptyPlaceholder } from '@/components/list-empty-placeholder';
+import { PaginatedFlatList, paginatedListStyles } from '@/components/paginated-flat-list';
 import { ScreenHeader } from '@/components/screen-header';
 import { ThemedText } from '@/components/themed-text';
-import { useQueryLoadState } from '@/hooks/use-query-load-state';
+import { usePaginatedInfiniteList } from '@/hooks/use-paginated-infinite-list';
 import { useThemeColor } from '@/hooks/use-theme-color';
-import { useGetProductsByCategoryQuery } from '@/store/api/catalogApi';
+import { useGetCategoryProductPagesInfiniteQuery } from '@/store/api/catalogApi';
+import type { Product } from '@/types/domain';
+import { getApiErrorDetails } from '@/utils/apiError';
 
 type Props = {
   categoryId: string;
@@ -16,53 +21,54 @@ type Props = {
 };
 
 export default function CategoryProductsScreen({ categoryId, categoryName }: Props) {
-  const {
-    data: products = [],
-    isLoading,
-    isFetching,
-    isError,
-    error,
-    refetch,
-  } = useGetProductsByCategoryQuery({ categoryId }, { skip: !categoryId });
+  const query = useGetCategoryProductPagesInfiniteQuery({ categoryId }, { skip: !categoryId });
+  const { items, isInitialLoading, loadMore, isFetchingNextPage } = usePaginatedInfiniteList(query);
 
   const muted = useThemeColor({}, 'muted');
-  const { errorMessage, showSpinner, showContent } = useQueryLoadState({
-    isError,
-    error,
-    fallback: 'Could not load products for this category.',
-    isLoading,
-  });
-
+  const errorMessage = query.isError
+    ? getApiErrorDetails(query.error, 'Could not load products for this category.').message
+    : null;
   const title = categoryName?.trim() ? categoryName : 'Category';
+
+  const renderItem = useCallback(
+    ({ item }: { item: Product }) => <CatalogProductCard product={item} />,
+    [],
+  );
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-        <ScreenHeader title={title} />
-        <ThemedText style={{ color: muted }}>
-          {isFetching && !isLoading ? 'Refreshing…' : 'All products in this category'}
-        </ThemedText>
-        <ApiErrorBanner
-          title="Could not load products"
-          message={errorMessage}
-          onRetry={refetch}
-        />
-        <QueryLoadBody isLoading={showSpinner} hasError={Boolean(errorMessage)}>
-          <CatalogProductList products={products} />
-        </QueryLoadBody>
-      </ScrollView>
+      <PaginatedFlatList
+        data={items}
+        renderItem={renderItem}
+        isFetchingNextPage={isFetchingNextPage}
+        onLoadMore={loadMore}
+        contentContainerStyle={paginatedListStyles.contentWide}
+        ListHeaderComponent={
+          <>
+            <ScreenHeader title={title} />
+            <ThemedText style={{ color: muted, marginBottom: 8 }}>
+              {query.isFetching && !isInitialLoading ? 'Refreshing…' : 'All products in this category'}
+            </ThemedText>
+            <ApiErrorBanner
+              title="Could not load products"
+              message={errorMessage}
+              onRetry={() => void query.refetch()}
+            />
+          </>
+        }
+        ListEmptyComponent={
+          <ListEmptyPlaceholder
+            isLoading={isInitialLoading}
+            isError={query.isError}
+            loadingSkeleton={<ProductListSkeleton count={5} />}
+            emptyLabel="No products in this category yet."
+          />
+        }
+      />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1 },
-  container: {
-    flexGrow: 1,
-    padding: 16,
-    gap: 12,
-    width: '100%',
-    maxWidth: 860,
-    alignSelf: 'center',
-  },
 });

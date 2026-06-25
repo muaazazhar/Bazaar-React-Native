@@ -1,7 +1,6 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -15,17 +14,18 @@ import { ApiErrorBanner } from '@/components/api-feedback';
 import { useNotification } from '@/context/NotificationContext';
 import { ValidatingTextInput } from '@/components/validating-text-input';
 import { ScreenHeader } from '@/components/screen-header';
+import { ThemedButton } from '@/components/themed-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { FIELD_LIMITS } from '@/constants/fieldLimits';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useResendVerificationMutation, useVerifyEmailMutation } from '@/store/api/authApi';
-import { persistAuthSession } from '@/store/authStorage';
+import { persistAuthSession, toStoredAuthUser } from '@/store/authStorage';
 import { clearVerificationStorage, getPendingEmail } from '@/store/verificationStorage';
 import { useAppDispatch } from '@/store/hooks';
 import { setCredentials } from '@/store/slices/authSlice';
 import { getApiErrorDetails } from '@/utils/apiError';
-import { notifyApiFailure } from '@/utils/inAppNotify';
+import { notifyApiFailure, notifySuccess } from '@/utils/inAppNotify';
 import { getResendCooldownSeconds, isResendCooldownError, parseResendParam } from '@/utils/authApiErrors';
 import { routeAfterAuth } from '@/utils/authRouting';
 
@@ -49,15 +49,11 @@ export default function VerifyEmailScreen() {
   const showApiError = (err: unknown, fallback: string, context: string) => {
     notifyApiFailure(notify, err, fallback, { title: 'Verification', context });
   };
-  const [info, setInfo] = useState('');
   const [sending, setSending] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(() => parseResendParam(resendInParam));
 
-  const borderColor = useThemeColor({}, 'border');
   const backgroundColor = useThemeColor({}, 'background');
-  const primary = useThemeColor({}, 'primary');
-  const primaryText = useThemeColor({}, 'primaryText');
   const muted = useThemeColor({}, 'muted');
   const danger = useThemeColor({}, 'danger');
 
@@ -86,7 +82,9 @@ export default function VerifyEmailScreen() {
     setError('');
     try {
       const result = await resendVerification({ email }).unwrap();
-      setInfo(result.message || 'Verification code sent to your email.');
+      notifySuccess(notify, result.message || 'Verification code sent to your email.', {
+        title: 'Verification',
+      });
       setSecondsLeft(result.resendAvailableInSeconds);
     } catch (err) {
       if (isResendCooldownError(err)) {
@@ -122,7 +120,7 @@ export default function VerifyEmailScreen() {
         }),
       );
       await persistAuthSession({
-        user: loginData.user,
+        user: toStoredAuthUser(loginData.user),
         token: loginData.access_token,
       });
       await clearVerificationStorage();
@@ -147,9 +145,7 @@ export default function VerifyEmailScreen() {
         <ThemedView style={[styles.container, { backgroundColor }]}>
           <ScreenHeader title="Verify Email" />
           <ThemedText style={{ color: danger }}>No email provided.</ThemedText>
-          <Pressable style={[styles.button, { backgroundColor: primary }]} onPress={() => router.replace('/login')}>
-            <ThemedText style={[styles.buttonText, { color: primaryText }]}>Back to Login</ThemedText>
-          </Pressable>
+          <ThemedButton variant="primary" label="Back to Login" onPress={() => router.replace('/login')} />
         </ThemedView>
       </SafeAreaView>
     );
@@ -188,34 +184,23 @@ export default function VerifyEmailScreen() {
               autoCapitalize="none"
             />
 
-            {info ? <ThemedText style={{ color: muted }}>{info}</ThemedText> : null}
             <ApiErrorBanner title="Verification" message={error || null} />
 
-            <Pressable
-              style={[
-                styles.button,
-                { backgroundColor: primary },
-                (verifying || code.length !== FIELD_LIMITS.verificationCode) && styles.buttonDisabled,
-              ]}
+            <ThemedButton
+              variant="primary"
+              label="Verify & Login"
+              loading={verifying}
+              disabled={code.length !== FIELD_LIMITS.verificationCode}
               onPress={handleVerify}
-              disabled={verifying || code.length !== FIELD_LIMITS.verificationCode}>
-              {verifying ? (
-                <ActivityIndicator color={primaryText} />
-              ) : (
-                <ThemedText style={[styles.buttonText, { color: primaryText }]}>Verify & Login</ThemedText>
-              )}
-            </Pressable>
+            />
 
-            <Pressable
-              style={[styles.secondaryButton, { borderColor }, resendDisabled && styles.buttonDisabled]}
+            <ThemedButton
+              variant="secondary"
+              label={resendLabel}
+              loading={sending}
+              disabled={resendDisabled}
               onPress={handleResend}
-              disabled={resendDisabled}>
-              {sending && secondsLeft === 0 ? (
-                <ActivityIndicator color={muted} />
-              ) : (
-                <ThemedText style={secondsLeft > 0 ? { color: muted } : undefined}>{resendLabel}</ThemedText>
-              )}
-            </Pressable>
+            />
 
             <Pressable onPress={() => router.replace('/login')}>
               <ThemedText type="link">Back to login</ThemedText>
@@ -242,24 +227,5 @@ const styles = StyleSheet.create({
   },
   helperText: {
     lineHeight: 20,
-  },
-  button: {
-    borderRadius: 10,
-    padding: 14,
-    alignItems: 'center',
-  },
-  secondaryButton: {
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 12,
-    alignItems: 'center',
-    minHeight: 48,
-    justifyContent: 'center',
-  },
-  buttonText: {
-    fontWeight: '700',
-  },
-  buttonDisabled: {
-    opacity: 0.55,
   },
 });

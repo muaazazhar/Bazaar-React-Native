@@ -1,7 +1,6 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
 import {
-  ActivityIndicator,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -14,6 +13,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ApiErrorBanner } from '@/components/api-feedback';
 import { ValidatingTextInput } from '@/components/validating-text-input';
 import { ScreenHeader } from '@/components/screen-header';
+import { ThemedButton } from '@/components/themed-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { FIELD_LIMITS, validateEmail } from '@/constants/fieldLimits';
@@ -31,10 +31,7 @@ export default function ForgotPasswordScreen() {
   const [fieldError, setFieldError] = useState<string | undefined>();
 
   const backgroundColor = useThemeColor({}, 'background');
-  const primary = useThemeColor({}, 'primary');
-  const primaryText = useThemeColor({}, 'primaryText');
   const muted = useThemeColor({}, 'muted');
-  const borderColor = useThemeColor({}, 'border');
 
   const handleSubmit = async () => {
     const emailError = validateEmail(email);
@@ -114,24 +111,19 @@ export default function ForgotPasswordScreen() {
 
               <ApiErrorBanner title="Reset password" message={error || null} />
 
-              <Pressable
-                style={[styles.button, { backgroundColor: primary }, loading && styles.buttonDisabled]}
+              <ThemedButton
+                variant="primary"
+                label="Send reset code"
+                loading={loading}
                 onPress={handleSubmit}
-                disabled={loading}>
-                {loading ? (
-                  <ActivityIndicator color={primaryText} />
-                ) : (
-                  <ThemedText style={[styles.buttonText, { color: primaryText }]}>
-                    Send reset code
-                  </ThemedText>
-                )}
-              </Pressable>
+                style={styles.submitButton}
+              />
 
-              <Pressable
-                style={[styles.secondaryButton, { borderColor }]}
-                onPress={() => router.replace('/login')}>
-                <ThemedText>Back to login</ThemedText>
-              </Pressable>
+              <ThemedButton
+                variant="secondary"
+                label="Back to login"
+                onPress={() => router.replace('/login')}
+              />
             </ThemedView>
           </Pressable>
         </ScrollView>
@@ -152,18 +144,5 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   helperText: { lineHeight: 20 },
-  button: {
-    borderRadius: 10,
-    padding: 14,
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  secondaryButton: {
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 12,
-    alignItems: 'center',
-  },
-  buttonText: { fontWeight: '700' },
-  buttonDisabled: { opacity: 0.55 },
+  submitButton: { marginTop: 4 },
 });

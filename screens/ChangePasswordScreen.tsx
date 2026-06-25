@@ -1,7 +1,6 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
 import {
-  ActivityIndicator,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -15,6 +14,7 @@ import { ApiErrorBanner } from '@/components/api-feedback';
 import { PasswordUpdateFields } from '@/components/password-update-fields';
 import { useNotification } from '@/context/NotificationContext';
 import { ScreenHeader } from '@/components/screen-header';
+import { ThemedButton } from '@/components/themed-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import {
@@ -27,7 +27,7 @@ import { useChangePasswordMutation, useVerifyPasswordMutation } from '@/store/ap
 import { useAppSelector } from '@/store/hooks';
 import { getApiErrorDetails } from '@/utils/apiError';
 import { getApiErrorData } from '@/utils/authApiErrors';
-import { notifySuccess } from '@/utils/inAppNotify';
+import { notifySuccessAfterNavigateBack } from '@/utils/inAppNotify';
 
 export default function ChangePasswordScreen() {
   const token = useAppSelector((state) => state.auth.token);
@@ -48,8 +48,6 @@ export default function ChangePasswordScreen() {
   }>({});
 
   const backgroundColor = useThemeColor({}, 'background');
-  const primary = useThemeColor({}, 'primary');
-  const primaryText = useThemeColor({}, 'primaryText');
   const muted = useThemeColor({}, 'muted');
 
   const handleSubmit = async () => {
@@ -90,10 +88,11 @@ export default function ChangePasswordScreen() {
         confirmPassword,
       }).unwrap();
 
-      notifySuccess(notify, result.message || 'Password updated successfully.', {
-        title: 'Password changed',
-      });
-      router.back();
+      notifySuccessAfterNavigateBack(
+        notify,
+        result.message || 'Password updated successfully.',
+        { title: 'Password changed' },
+      );
     } catch (err) {
       const code = getApiErrorData(err)?.code;
       if (code === 'INVALID_PASSWORD') {
@@ -117,9 +116,7 @@ export default function ChangePasswordScreen() {
         <ThemedView style={[styles.container, { backgroundColor }]}>
           <ScreenHeader title="Change Password" />
           <ThemedText style={{ color: muted }}>Sign in to change your password.</ThemedText>
-          <Pressable style={[styles.button, { backgroundColor: primary }]} onPress={() => router.replace('/login')}>
-            <ThemedText style={[styles.buttonText, { color: primaryText }]}>Go to login</ThemedText>
-          </Pressable>
+          <ThemedButton variant="primary" label="Go to login" onPress={() => router.replace('/login')} />
         </ThemedView>
       </SafeAreaView>
     );
@@ -174,18 +171,12 @@ export default function ChangePasswordScreen() {
 
               <ApiErrorBanner title="Change password" message={error || null} />
 
-              <Pressable
-                style={[styles.button, { backgroundColor: primary }, loading && styles.buttonDisabled]}
+              <ThemedButton
+                variant="primary"
+                label="Update password"
+                loading={loading}
                 onPress={handleSubmit}
-                disabled={loading}>
-                {loading ? (
-                  <ActivityIndicator color={primaryText} />
-                ) : (
-                  <ThemedText style={[styles.buttonText, { color: primaryText }]}>
-                    Update password
-                  </ThemedText>
-                )}
-              </Pressable>
+              />
             </ThemedView>
           </Pressable>
         </ScrollView>
@@ -206,12 +197,4 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   helperText: { lineHeight: 20 },
-  button: {
-    borderRadius: 10,
-    padding: 14,
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  buttonText: { fontWeight: '700' },
-  buttonDisabled: { opacity: 0.55 },
 });

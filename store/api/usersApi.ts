@@ -12,6 +12,8 @@ export type ChangePasswordResponse = {
 
 export type UpdateProfileBody = {
   username?: string;
+  firstName?: string;
+  lastName?: string;
   phone?: string;
 };
 

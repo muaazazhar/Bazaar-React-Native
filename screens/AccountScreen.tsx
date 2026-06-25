@@ -1,13 +1,16 @@
 import { router } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet } from "react-native";
+import { ScrollView, StyleSheet } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import { DebouncedPressable } from "@/components/debounced-pressable";
 import { ScreenHeader } from "@/components/screen-header";
+import { ThemedButton } from "@/components/themed-button";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { useThemeColor } from "@/hooks/use-theme-color";
 import { useSessionBusy } from "@/hooks/use-session-busy";
+import { formatUserDisplayName } from "@/utils/userDisplay";
 import { performSessionLogout } from "@/store/authSession";
 import { useAppDispatch, useAppSelector } from "@/store/hooks";
 
@@ -16,7 +19,6 @@ export default function AccountScreen() {
   const dispatch = useAppDispatch();
   const borderColor = useThemeColor({}, "border");
   const surface = useThemeColor({}, "surface");
-  const danger = useThemeColor({}, "danger");
   const muted = useThemeColor({}, "muted");
 
   const [loggingOut, setLoggingOut] = useState(false);
@@ -48,7 +50,7 @@ export default function AccountScreen() {
           ]}
         >
           <ThemedText type="defaultSemiBold">
-            {user?.username ?? "Customer"}
+            {formatUserDisplayName(user, user?.username ?? "Customer")}
           </ThemedText>
           <ThemedText>{user?.email}</ThemedText>
           {user?.phone ? <ThemedText style={{ color: muted }}>{user.phone}</ThemedText> : null}
@@ -58,41 +60,37 @@ export default function AccountScreen() {
           style={[styles.menuCard, { borderColor, backgroundColor: surface }]}
         >
           <ThemedText type="subtitle">Account & settings</ThemedText>
-          <Pressable
+          <DebouncedPressable
             style={[styles.menuItem, { borderColor }]}
             onPress={() => router.push("/(tabs)/orders")}
             disabled={uiLocked}
           >
             <ThemedText>Orders</ThemedText>
-          </Pressable>
-          <Pressable
+          </DebouncedPressable>
+          <DebouncedPressable
             style={[styles.menuItem, { borderColor }]}
             onPress={() => router.push("/edit-profile")}
             disabled={uiLocked}
           >
             <ThemedText>Edit profile</ThemedText>
-          </Pressable>
-          <Pressable style={[styles.menuItem, { borderColor }]}>
+          </DebouncedPressable>
+          <DebouncedPressable style={[styles.menuItem, { borderColor }]} disabled={uiLocked}>
             <ThemedText>Connect Accounts</ThemedText>
-          </Pressable>
-          <Pressable style={[styles.menuItem, { borderColor }]}>
+          </DebouncedPressable>
+          <DebouncedPressable style={[styles.menuItem, { borderColor }]} disabled={uiLocked}>
             <ThemedText>Share App</ThemedText>
-          </Pressable>
+          </DebouncedPressable>
         </ThemedView>
 
-        <Pressable
-          style={[styles.menuItem, { borderColor: danger }, uiLocked && styles.disabled]}
-          onPress={handleLogout}
+        <ThemedButton
+          variant="danger"
+          label={sessionBusy ? "Finishing tasks…" : "Logout"}
+          loading={loggingOut}
+          loadingLabel="Logging out…"
+          onPress={() => void handleLogout()}
           disabled={uiLocked}
-        >
-          {loggingOut ? (
-            <ActivityIndicator color={danger} />
-          ) : (
-            <ThemedText style={{ color: danger }}>
-              {sessionBusy ? "Finishing tasks…" : "Logout"}
-            </ThemedText>
-          )}
-        </Pressable>
+          style={styles.logoutButton}
+        />
       </ScrollView>
     </SafeAreaView>
   );
@@ -122,7 +120,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 12,
   },
-  disabled: {
-    opacity: 0.6,
+  logoutButton: {
+    alignSelf: "stretch",
   },
 });

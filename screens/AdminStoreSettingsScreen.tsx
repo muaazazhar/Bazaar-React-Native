@@ -3,15 +3,19 @@ import { Pressable, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ApiErrorBanner } from "@/components/api-feedback";
+import { ProductListSkeleton } from "@/components/catalog-skeletons";
+import { QueryLoadBody } from "@/components/query-load-body";
 import { useNotification } from "@/context/NotificationContext";
 import { KeyboardAwareScroll } from "@/components/keyboard-aware-scroll";
 import { ScreenHeader } from "@/components/screen-header";
+import { ThemedButton } from "@/components/themed-button";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { ValidatingTextInput } from "@/components/validating-text-input";
 import {
   FIELD_LIMITS,
   validateDeliveryCharge,
+  validatePhoneOptional,
   validateRequired,
 } from "@/constants/fieldLimits";
 import { useThemeColor } from "@/hooks/use-theme-color";
@@ -36,6 +40,7 @@ const defaultSettings: StoreSettings = {
   popularProductLimit: 12,
   popularCriteria: "most_ordered",
   featuredProductIds: [],
+  whatsappNumber: null,
 };
 
 const POPULAR_CRITERIA_OPTIONS: { value: PopularProductCriteria; label: string }[] = [
@@ -50,11 +55,13 @@ type StoreSettingsFieldErrors = {
   accountName?: string;
   accountNumber?: string;
   deliveryCharge?: string;
+  whatsappNumber?: string;
 };
 
 export default function AdminStoreSettingsScreen() {
   const {
     data,
+    isLoading,
     isError: settingsLoadError,
     error: settingsQueryError,
   } = useGetStoreSettingsQuery();
@@ -69,6 +76,7 @@ export default function AdminStoreSettingsScreen() {
   const [popularCriteria, setPopularCriteria] =
     useState<PopularProductCriteria>("most_ordered");
   const [featuredProductIds, setFeaturedProductIds] = useState("");
+  const [whatsappNumber, setWhatsappNumber] = useState("");
   const [saving, setSaving] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<StoreSettingsFieldErrors>({});
   const { notify } = useNotification();
@@ -93,6 +101,7 @@ export default function AdminStoreSettingsScreen() {
       setPopularProductLimit(String(data.popularProductLimit ?? 12));
       setPopularCriteria(data.popularCriteria ?? "most_ordered");
       setFeaturedProductIds((data.featuredProductIds ?? []).join(", "));
+      setWhatsappNumber(data.whatsappNumber ?? "");
     }
   }, [data]);
 
@@ -108,6 +117,8 @@ export default function AdminStoreSettingsScreen() {
       const deliveryError = validateDeliveryCharge(deliveryCharge);
       if (deliveryError) errors.deliveryCharge = deliveryError;
     }
+    const whatsappError = validatePhoneOptional(whatsappNumber);
+    if (whatsappError) errors.whatsappNumber = whatsappError;
     setFieldErrors(errors);
     if (Object.keys(errors).length > 0) return;
 
@@ -131,6 +142,7 @@ export default function AdminStoreSettingsScreen() {
           .split(/[,\s]+/)
           .map((id) => id.trim())
           .filter(Boolean),
+        whatsappNumber: whatsappNumber.trim() || null,
       };
       await upsertSettings({
         ...payload,
@@ -167,6 +179,11 @@ export default function AdminStoreSettingsScreen() {
           }
         />
 
+        <QueryLoadBody
+          isLoading={isLoading && !data}
+          hasError={settingsLoadError}
+          skeleton={<ProductListSkeleton count={2} />}
+        >
         <ThemedView
           style={[styles.card, { borderColor, backgroundColor: surface }]}
         >
@@ -303,6 +320,30 @@ export default function AdminStoreSettingsScreen() {
         <ThemedView
           style={[styles.card, { borderColor, backgroundColor: surface }]}
         >
+          <ThemedText type="defaultSemiBold">Contact (WhatsApp)</ThemedText>
+          <ThemedText style={{ color: muted, fontSize: 13 }}>
+            Shown on the customer home screen. Tapping opens a WhatsApp chat with this number.
+          </ThemedText>
+          <ValidatingTextInput
+            label="WhatsApp number"
+            optional
+            placeholder="e.g. 03001234567"
+            value={whatsappNumber}
+            onChangeText={(text) => {
+              setWhatsappNumber(text);
+              if (fieldErrors.whatsappNumber) {
+                setFieldErrors((p) => ({ ...p, whatsappNumber: undefined }));
+              }
+            }}
+            keyboardType="phone-pad"
+            maxLength={FIELD_LIMITS.phone}
+            error={fieldErrors.whatsappNumber}
+          />
+        </ThemedView>
+
+        <ThemedView
+          style={[styles.card, { borderColor, backgroundColor: surface }]}
+        >
           <ThemedText type="defaultSemiBold">Bank account</ThemedText>
           <ValidatingTextInput
             label="Bank Name"
@@ -349,20 +390,17 @@ export default function AdminStoreSettingsScreen() {
             maxLength={FIELD_LIMITS.iban}
             autoCapitalize="characters"
           />
-          <Pressable
-            style={[
-              styles.button,
-              { backgroundColor: primary },
-              saving && styles.buttonDisabled,
-            ]}
+          <ThemedButton
+            variant="primary"
+            label="Save settings"
+            loading={saving}
+            loadingLabel="Saving..."
             onPress={handleSave}
             disabled={saving}
-          >
-            <ThemedText style={[styles.buttonText, { color: primaryText }]}>
-              {saving ? "Saving..." : "Save settings"}
-            </ThemedText>
-          </Pressable>
+            style={styles.saveButton}
+          />
         </ThemedView>
+        </QueryLoadBody>
       </KeyboardAwareScroll>
     </SafeAreaView>
   );
@@ -387,17 +425,8 @@ const styles = StyleSheet.create({
     padding: 12,
     gap: 8,
   },
-  button: {
-    borderRadius: 10,
-    padding: 12,
-    alignItems: "center",
+  saveButton: {
     marginTop: 8,
-  },
-  buttonText: {
-    fontWeight: "700",
-  },
-  buttonDisabled: {
-    opacity: 0.6,
   },
   toggleRow: {
     flexDirection: "row",

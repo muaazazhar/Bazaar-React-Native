@@ -1,67 +1,75 @@
-import { router } from 'expo-router';
-import { useCallback } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useCallback, useMemo } from 'react';
+import { FlatList, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { router } from 'expo-router';
 
 import { ApiErrorBanner } from '@/components/api-feedback';
-import { CatalogProductList } from '@/components/catalog-product-list';
-import { QueryLoadBody } from '@/components/query-load-body';
+import { CategoryRowSkeleton, ProductListSkeleton } from '@/components/catalog-skeletons';
+import { CatalogProductCard } from '@/components/catalog-product-list';
+import { DebouncedPressable } from '@/components/debounced-pressable';
+import { fabStackBottomPadding } from '@/components/floating-action-button';
+import { ListEmptyPlaceholder } from '@/components/list-empty-placeholder';
+import { ListLoadMoreFooter } from '@/components/list-load-more-footer';
+import { PaginatedFlatList, paginatedListStyles } from '@/components/paginated-flat-list';
 import { RemoteImage } from '@/components/remote-image';
 import { ScreenHeader } from '@/components/screen-header';
+import { ThemedButton } from '@/components/themed-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
-import { useMergedQueryLoadState } from '@/hooks/use-query-load-state';
+import { usePaginatedInfiniteList } from '@/hooks/use-paginated-infinite-list';
 import { useThemeColor } from '@/hooks/use-theme-color';
-import { useGetCategoriesQuery, useGetPopularProductsQuery } from '@/store/api/catalogApi';
+import {
+  useGetCategoryPagesInfiniteQuery,
+  useGetPopularProductPagesInfiniteQuery,
+} from '@/store/api/catalogApi';
+import type { Product } from '@/types/domain';
+import { getApiErrorDetails } from '@/utils/apiError';
 
 export default function HomeScreen() {
+  const popularQuery = useGetPopularProductPagesInfiniteQuery();
+  const categoriesQuery = useGetCategoryPagesInfiniteQuery();
+
   const {
-    data: popularProducts = [],
-    isLoading: productsLoading,
-    isFetching,
-    isError: productsError,
-    error: productsQueryError,
-    refetch: refetchPopular,
-  } = useGetPopularProductsQuery();
+    items: popularProducts,
+    isInitialLoading: popularLoading,
+    loadMore: loadMoreProducts,
+    isFetchingNextPage: fetchingMoreProducts,
+  } = usePaginatedInfiniteList(popularQuery);
+
   const {
-    data: categories = [],
-    isError: categoriesError,
-    error: categoriesQueryError,
-    refetch: refetchCategories,
-  } = useGetCategoriesQuery();
+    items: categories,
+    isInitialLoading: categoriesLoading,
+    loadMore: loadMoreCategories,
+    isFetchingNextPage: fetchingMoreCategories,
+  } = usePaginatedInfiniteList(categoriesQuery);
 
   const borderColor = useThemeColor({}, 'border');
   const surface = useThemeColor({}, 'surface');
-  const primary = useThemeColor({}, 'primary');
-  const primaryText = useThemeColor({}, 'primaryText');
   const muted = useThemeColor({}, 'muted');
-  const { errorMessage, showSpinner } = useMergedQueryLoadState({
-    queries: [
-      { isError: productsError, error: productsQueryError },
-      { isError: categoriesError, error: categoriesQueryError },
-    ],
-    fallback: 'Could not load store catalog.',
-    isLoading: productsLoading,
-  });
 
-  const openCategory = useCallback(
-    (categoryId: string, categoryName: string) => {
-      router.push({
-        pathname: '/category/[id]',
-        params: { id: categoryId, name: categoryName },
-      });
-    },
-    [],
-  );
+  const productsErrorMessage = popularQuery.isError
+    ? getApiErrorDetails(popularQuery.error, 'Could not load popular products.').message
+    : null;
+  const categoriesErrorMessage = categoriesQuery.isError
+    ? getApiErrorDetails(categoriesQuery.error, 'Could not load categories.').message
+    : null;
+  const errorMessage = productsErrorMessage ?? categoriesErrorMessage;
+
+  const openCategory = useCallback((categoryId: string, categoryName: string) => {
+    router.push({
+      pathname: '/category/[id]',
+      params: { id: categoryId, name: categoryName },
+    });
+  }, []);
 
   const refetchAll = useCallback(() => {
-    void refetchPopular();
-    void refetchCategories();
-  }, [refetchPopular, refetchCategories]);
+    void popularQuery.refetch();
+    void categoriesQuery.refetch();
+  }, [categoriesQuery, popularQuery]);
 
-  return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+  const listHeader = useMemo(
+    () => (
+      <View style={styles.headerBlock}>
         <ScreenHeader title="Bazaar" showBack={false} />
 
         <ThemedView style={[styles.bannerCard, { borderColor, backgroundColor: surface }]}>
@@ -71,63 +79,113 @@ export default function HomeScreen() {
 
         <View style={styles.sectionRow}>
           <ThemedText type="subtitle">Categories</ThemedText>
-          <Pressable onPress={refetchAll}>
-            <ThemedText type="link">{isFetching ? 'Refreshing...' : 'Refresh'}</ThemedText>
-          </Pressable>
+          <DebouncedPressable onPress={refetchAll}>
+            <ThemedText type="link">
+              {popularQuery.isFetching || categoriesQuery.isFetching ? 'Refreshing...' : 'Refresh'}
+            </ThemedText>
+          </DebouncedPressable>
         </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoriesRow}>
-          {categories.map((category) => (
-            <Pressable
-              key={category.id}
-              onPress={() => openCategory(String(category.id), category.name)}
-              style={({ pressed }) => [pressed && styles.pressed]}>
-              <ThemedView style={[styles.categoryCard, { borderColor, backgroundColor: surface }]}>
-                {category.imageUrl ? (
-                  <RemoteImage
-                    uri={category.imageUrl}
-                    style={styles.categoryImage}
-                    recyclingKey={`category-${category.id}`}
-                  />
-                ) : null}
-                <ThemedText style={styles.categoryName}>{category.name}</ThemedText>
-              </ThemedView>
-            </Pressable>
-          ))}
-        </ScrollView>
+
+        {categoriesLoading ? (
+          <CategoryRowSkeleton />
+        ) : (
+          <FlatList
+            horizontal
+            data={categories}
+            keyExtractor={(item) => String(item.id)}
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.categoriesRow}
+            onEndReached={loadMoreCategories}
+            onEndReachedThreshold={0.6}
+            ListFooterComponent={
+              <ListLoadMoreFooter visible={fetchingMoreCategories} label="Loading categories…" />
+            }
+            renderItem={({ item: category }) => (
+              <DebouncedPressable
+                onPress={() => openCategory(String(category.id), category.name)}
+                style={({ pressed }) => [pressed && styles.pressed]}>
+                <ThemedView style={[styles.categoryCard, { borderColor, backgroundColor: surface }]}>
+                  {category.imageUrl ? (
+                    <RemoteImage
+                      uri={category.imageUrl}
+                      style={styles.categoryImage}
+                      recyclingKey={`category-${category.id}`}
+                    />
+                  ) : null}
+                  <ThemedText style={styles.categoryName}>{category.name}</ThemedText>
+                </ThemedView>
+              </DebouncedPressable>
+            )}
+          />
+        )}
 
         <ThemedText type="subtitle">Popular products</ThemedText>
-        <ApiErrorBanner
-          title="Could not load store"
-          message={errorMessage}
-          onRetry={refetchAll}
-        />
-        <QueryLoadBody isLoading={showSpinner} hasError={Boolean(errorMessage)}>
-          <CatalogProductList products={popularProducts} />
-        </QueryLoadBody>
+        <ApiErrorBanner title="Could not load store" message={errorMessage} onRetry={refetchAll} />
+      </View>
+    ),
+    [
+      borderColor,
+      categories,
+      categoriesLoading,
+      categoriesQuery.isFetching,
+      errorMessage,
+      fetchingMoreCategories,
+      loadMoreCategories,
+      muted,
+      openCategory,
+      popularQuery.isFetching,
+      refetchAll,
+      surface,
+    ],
+  );
 
-        <Pressable
-          style={[styles.secondaryButton, { borderColor }]}
-          onPress={() => router.push('/custom-order')}>
-          <ThemedText type="defaultSemiBold">Order non-listed items</ThemedText>
-          <ThemedText style={{ color: muted, fontSize: 13, marginTop: 4 }}>
-            Request products not in the catalog — cash on delivery only.
-          </ThemedText>
-        </Pressable>
+  const renderProduct = useCallback(
+    ({ item }: { item: Product }) => <CatalogProductCard product={item} />,
+    [],
+  );
 
-        <Pressable style={[styles.primaryButton, { backgroundColor: primary }]} onPress={() => router.push('/(tabs)/cart')}>
-          <ThemedText style={[styles.primaryButtonText, { color: primaryText }]}>Go to cart</ThemedText>
-        </Pressable>
-      </ScrollView>
+  return (
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <PaginatedFlatList
+        data={popularProducts}
+        renderItem={renderProduct}
+        ListHeaderComponent={listHeader}
+        isFetchingNextPage={fetchingMoreProducts}
+        onLoadMore={loadMoreProducts}
+        contentContainerStyle={[paginatedListStyles.contentDefault, { paddingBottom: fabStackBottomPadding(2) }]}
+        ListFooterComponent={
+          <View style={styles.footerBlock}>
+            <ListLoadMoreFooter visible={fetchingMoreProducts} />
+            <ThemedButton
+              variant="primary"
+              label="Go to cart"
+              onPress={() => router.push('/(tabs)/cart')}
+              style={styles.cartButton}
+            />
+          </View>
+        }
+        ListEmptyComponent={
+          <ListEmptyPlaceholder
+            isLoading={popularLoading}
+            isError={popularQuery.isError}
+            loadingSkeleton={<ProductListSkeleton count={4} />}
+            emptyLabel="No popular products right now."
+          />
+        }
+      />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1 },
-  container: {
-    flexGrow: 1,
-    padding: 16,
+  headerBlock: {
     gap: 12,
+    marginBottom: 4,
+  },
+  footerBlock: {
+    gap: 12,
+    marginTop: 4,
   },
   bannerCard: {
     borderWidth: 1,
@@ -163,18 +221,7 @@ const styles = StyleSheet.create({
   pressed: {
     opacity: 0.85,
   },
-  primaryButton: {
-    borderRadius: 10,
-    padding: 12,
-    alignItems: 'center',
-  },
-  secondaryButton: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 14,
-    gap: 2,
-  },
-  primaryButtonText: {
-    fontWeight: '700',
+  cartButton: {
+    marginTop: 4,
   },
 });

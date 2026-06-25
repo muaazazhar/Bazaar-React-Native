@@ -14,3 +14,7 @@ export function isAuthFlowScreen(): boolean {
     trackedPathname.startsWith('/reset-password')
   );
 }
+
+export function isAdminScreen(): boolean {
+  return trackedPathname === '/admin' || trackedPathname.startsWith('/admin-');
+}

@@ -1,20 +1,22 @@
 import { useEffect, useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
-import { ActivityIndicator, Pressable, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { CategoryListSkeleton } from '@/components/catalog-skeletons';
 import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 import { useNotification } from '@/context/NotificationContext';
 import { ImagePickerField } from '@/components/image-picker-field';
 import { RemoteImage } from '@/components/remote-image';
 import { ScreenHeader } from '@/components/screen-header';
+import { ThemedButton } from '@/components/themed-button';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { ValidatingTextInput } from '@/components/validating-text-input';
 import { FIELD_LIMITS, validateRequired } from '@/constants/fieldLimits';
 import { useThemeColor } from '@/hooks/use-theme-color';
-import { useGetCategoriesQuery, useUpdateCategoryMutation } from '@/store/api/catalogApi';
-import { notifyAdminApiFailure } from '@/utils/inAppNotify';
+import { useGetCategoryQuery, useUpdateCategoryMutation } from '@/store/api/catalogApi';
+import { notifyAdminApiFailure, notifyAfterNavigateBack } from '@/utils/inAppNotify';
 import { categoryUpdatedMessage } from '@/utils/notificationMessages';
 import { getImagePart, pickImageFromLibrary } from '@/utils/imageUpload';
 
@@ -24,11 +26,13 @@ export default function AdminEditCategoryScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const categoryId = typeof id === 'string' ? id : '';
 
-  const { data: categories = [], isLoading } = useGetCategoriesQuery();
+  const {
+    data: category,
+    isLoading,
+    isError,
+  } = useGetCategoryQuery(categoryId, { skip: !categoryId });
   const [updateCategory] = useUpdateCategoryMutation();
   const { notify } = useNotification();
-
-  const category = categories.find((item) => String(item.id) === categoryId);
 
   const [name, setName] = useState('');
   const [newImageUri, setNewImageUri] = useState<string | null>(null);
@@ -39,8 +43,6 @@ export default function AdminEditCategoryScreen() {
 
   const borderColor = useThemeColor({}, 'border');
   const surface = useThemeColor({}, 'surface');
-  const primary = useThemeColor({}, 'primary');
-  const primaryText = useThemeColor({}, 'primaryText');
   const muted = useThemeColor({}, 'muted');
   const danger = useThemeColor({}, 'danger');
 
@@ -75,8 +77,7 @@ export default function AdminEditCategoryScreen() {
         formData.append('image', getImagePart(newImageUri) as any);
       }
       await updateCategory({ id: categoryId, body: formData }).unwrap();
-      notify(categoryUpdatedMessage(name.trim()));
-      router.back();
+      notifyAfterNavigateBack(notify, categoryUpdatedMessage(name.trim()));
     } catch (error) {
       notifyAdminApiFailure(notify, error, 'Could not update category. Please try again.', {
         title: 'Update failed',
@@ -88,22 +89,31 @@ export default function AdminEditCategoryScreen() {
     }
   };
 
-  if (isLoading && !category) {
+  if (!categoryId) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-        <ActivityIndicator style={{ marginTop: 24 }} />
+        <ScreenHeader title="Edit Category" />
+        <ThemedText style={{ color: danger, padding: 16 }}>Invalid category.</ThemedText>
+        <ThemedButton variant="secondary" label="Go back" onPress={() => router.back()} style={{ marginHorizontal: 16 }} />
       </SafeAreaView>
     );
   }
 
-  if (!category) {
+  if (isLoading) {
+    return (
+      <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+        <ScreenHeader title="Edit Category" />
+        <CategoryListSkeleton count={1} />
+      </SafeAreaView>
+    );
+  }
+
+  if (isError || !category) {
     return (
       <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
         <ScreenHeader title="Edit Category" />
         <ThemedText style={{ color: danger, padding: 16 }}>Category not found.</ThemedText>
-        <Pressable style={[styles.secondaryButton, { borderColor, marginHorizontal: 16 }]} onPress={() => router.back()}>
-          <ThemedText>Go back</ThemedText>
-        </Pressable>
+        <ThemedButton variant="secondary" label="Go back" onPress={() => router.back()} style={{ marginHorizontal: 16 }} />
       </SafeAreaView>
     );
   }
@@ -111,7 +121,7 @@ export default function AdminEditCategoryScreen() {
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <KeyboardAwareScroll contentContainerStyle={styles.container}>
-        <ScreenHeader title={category ? `Edit: ${category.name}` : 'Edit category'} />
+        <ScreenHeader title={`Edit: ${category.name}`} />
         <ThemedView style={[styles.card, { borderColor, backgroundColor: surface }]}>
           <ValidatingTextInput
             label="Category name"
@@ -123,14 +133,12 @@ export default function AdminEditCategoryScreen() {
             maxLength={FIELD_LIMITS.categoryName}
             error={fieldErrors.name}
           />
-
           {category.imageUrl && !newImageUri ? (
             <>
               <ThemedText style={{ color: muted }}>Current image</ThemedText>
               <RemoteImage uri={category.imageUrl} style={styles.preview} recyclingKey={`category-${category.id}`} />
             </>
           ) : null}
-
           <ImagePickerField
             label="Category image"
             optional
@@ -147,18 +155,15 @@ export default function AdminEditCategoryScreen() {
             recyclingKey={newImageUri ? `edit-${newImageUri}` : undefined}
             previewStyle={styles.preview}
           />
-
-          <Pressable
-            style={[styles.button, { backgroundColor: primary }, busy && styles.buttonDisabled]}
+          <ThemedButton
+            variant="primary"
+            label="Update Category"
+            loading={busy}
             onPress={handleUpdate}
-            disabled={busy}>
-            {busy ? (
-              <ActivityIndicator color={primaryText} />
-            ) : (
-              <ThemedText style={[styles.buttonText, { color: primaryText }]}>Update Category</ThemedText>
-            )}
-          </Pressable>
+            disabled={busy}
+          />
         </ThemedView>
+        <ThemedButton variant="secondary" label="Cancel" onPress={() => router.back()} disabled={busy} />
       </KeyboardAwareScroll>
     </SafeAreaView>
   );
@@ -180,26 +185,9 @@ const styles = StyleSheet.create({
     padding: 12,
     gap: 10,
   },
-  button: {
-    borderRadius: 10,
-    padding: 12,
-    alignItems: 'center',
-  },
-  secondaryButton: {
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 10,
-    alignItems: 'center',
-  },
-  buttonText: {
-    fontWeight: '700',
-  },
   preview: {
     width: 96,
     height: 96,
     borderRadius: 12,
-  },
-  buttonDisabled: {
-    opacity: 0.6,
   },
 });

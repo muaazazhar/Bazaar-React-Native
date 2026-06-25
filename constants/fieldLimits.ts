@@ -12,6 +12,8 @@ export const FIELD_LIMITS = {
   deliveryCharge: 8,
   identifier: 150,
   username: 50,
+  firstName: 50,
+  lastName: 50,
   email: 150,
   phone: 20,
   password: 128,
@@ -90,9 +92,29 @@ export function validateUsername(value: string): string | null {
   return null;
 }
 
+export function validatePersonName(value: string, label: string): string | null {
+  const required = validateRequired(value, label);
+  if (required) return required;
+  if (value.trim().length < 2) {
+    return `${label} must be at least 2 characters.`;
+  }
+  return null;
+}
+
 export function validatePhoneOptional(value: string): string | null {
   if (!value.trim()) return null;
   return validatePhone(value);
+}
+
+export const MIN_ADDRESS_LENGTH = 10;
+
+export function validateAddress(value: string): string | null {
+  const required = validateRequired(value, 'Delivery address');
+  if (required) return required;
+  if (value.trim().length < MIN_ADDRESS_LENGTH) {
+    return `Delivery address must be at least ${MIN_ADDRESS_LENGTH} characters.`;
+  }
+  return null;
 }
 
 export function validatePassword(value: string): string | null {

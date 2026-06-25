@@ -7,7 +7,7 @@ import type { User } from '@/types/domain';
 type AuthContextType = {
   user: User | null;
   login: (identifier: string, password: string) => Promise<void>;
-  signup: (username: string, email: string, phone: string, password: string) => Promise<void>;
+  signup: (username: string, email: string, phone: string, password: string, firstName: string, lastName: string) => Promise<void>;
   logout: () => void;
 };
 
@@ -22,8 +22,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthToken(res.token ?? null);
   };
 
-  const signup = async (username: string, email: string, phone: string, password: string) => {
-    const res = await registerApi(username, email, phone, password);
+  const signup = async (
+    username: string,
+    email: string,
+    phone: string,
+    password: string,
+    firstName: string,
+    lastName: string,
+  ) => {
+    const res = await registerApi(username, email, phone, password, firstName, lastName);
     setUser(res.user);
     setAuthToken(res.token ?? null);
   };

@@ -1,9 +1,9 @@
 import { router } from 'expo-router';
 
-import { clearStoredAuthSession } from '@/store/authStorage';
+import { clearStoredAuthSession, toStoredAuthUser, updateStoredAuthUser } from '@/store/authStorage';
 import type { AppDispatch } from '@/store/index';
 import { waitForPendingSessionTasks } from '@/store/pendingSessionTasks';
-import { logout } from '@/store/slices/authSlice';
+import { logout, updateUser } from '@/store/slices/authSlice';
 import { isAuthFlowScreen } from '@/utils/authRoute';
 
 let sessionLogoutInProgress = false;
@@ -47,7 +47,11 @@ export function validateAuthSession(
             forceRefetch: options?.forceRefetch ?? false,
           }),
         )
-        .unwrap();
+        .unwrap()
+        .then(async (me) => {
+          dispatch(updateUser(me));
+          await updateStoredAuthUser(toStoredAuthUser(me));
+        });
     } catch {
       await performSessionLogout(dispatch);
     } finally {

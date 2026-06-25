@@ -56,9 +56,13 @@ export async function registerApi(
   email: string,
   phone: string,
   password: string,
+  firstName: string,
+  lastName: string,
 ): Promise<AuthResponse> {
   const res = await api.post<MaybeAuthResponse>("/auth/register", {
     username: username.trim(),
+    firstName: firstName.trim(),
+    lastName: lastName.trim(),
     email: email.trim(),
     phone: phone.trim(),
     password,

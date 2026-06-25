@@ -1,28 +1,45 @@
-import { useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useMemo, useState } from "react";
+import { StyleSheet, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-import { ApiErrorBanner } from '@/components/api-feedback';
-import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
-import { OrderItemsList } from '@/components/order-items-list';
-import { ValidatingTextInput } from '@/components/validating-text-input';
-import { ScreenHeader } from '@/components/screen-header';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { FIELD_LIMITS, validateRequired } from '@/constants/fieldLimits';
-import { useNotification } from '@/context/NotificationContext';
-import { useSessionBusy } from '@/hooks/use-session-busy';
-import { useThemeColor } from '@/hooks/use-theme-color';
-import { usePlaceOrderMutation } from '@/store/api/ordersApi';
-import { useAppDispatch } from '@/store/hooks';
-import { getApiErrorDetails } from '@/utils/apiError';
+import { ApiErrorBanner } from "@/components/api-feedback";
+import { DeliveryAddressField } from "@/components/delivery-address-field";
+import { KeyboardAwareScroll } from "@/components/keyboard-aware-scroll";
+import { OrderItemsList } from "@/components/order-items-list";
+import { ScreenHeader } from "@/components/screen-header";
+import { SurfaceCard } from "@/components/surface-card";
+import { ThemedButton } from "@/components/themed-button";
+import { ThemedText } from "@/components/themed-text";
+import { ThemedView } from "@/components/themed-view";
+import { ValidatingTextInput } from "@/components/validating-text-input";
+import { FIELD_LIMITS } from "@/constants/fieldLimits";
+import { useNotification } from "@/context/NotificationContext";
+import { useSessionBusy } from "@/hooks/use-session-busy";
+import { useThemeColor } from "@/hooks/use-theme-color";
+import { usePlaceOrderMutation } from "@/store/api/ordersApi";
+import { useAppDispatch } from "@/store/hooks";
+import { getApiErrorDetails } from "@/utils/apiError";
 import {
+  buildCustomOrderBody,
   CUSTOM_ORDER_MAX_ITEMS,
+  CUSTOM_ORDER_MIN_ITEM_LENGTH,
   parseCustomOrderLines,
-  validateCustomOrderItems,
-} from '@/utils/customOrder';
-import { orderPlacedMessage } from '@/utils/notificationMessages';
-import { completeOrderPlacement } from '@/utils/orderPlacement';
+  validateCustomOrderForm,
+} from "@/utils/customOrder";
+import { orderPlacedMessage } from "@/utils/notificationMessages";
+import { completeOrderPlacement } from "@/utils/orderPlacement";
+
+const ITEMS_INPUT_MIN_HEIGHT = 150;
+const ITEMS_INPUT_MAX_HEIGHT = 350;
+const ITEMS_INPUT_LINE_HEIGHT = 20;
+
+function getItemsInputHeight(lineCount: number): number {
+  const lines = Math.max(lineCount, 8);
+  return Math.min(
+    ITEMS_INPUT_MAX_HEIGHT,
+    Math.max(ITEMS_INPUT_MIN_HEIGHT, lines * ITEMS_INPUT_LINE_HEIGHT + 48),
+  );
+}
 
 export default function CustomOrderScreen() {
   const dispatch = useAppDispatch();
@@ -30,42 +47,45 @@ export default function CustomOrderScreen() {
   const sessionBusy = useSessionBusy();
   const [placeOrder] = usePlaceOrderMutation();
 
-  const [itemsText, setItemsText] = useState('');
-  const [address, setAddress] = useState('');
+  const [itemsText, setItemsText] = useState("");
+  const [address, setAddress] = useState("");
   const [loading, setLoading] = useState(false);
-  const [loadingLabel, setLoadingLabel] = useState('Place order');
-  const [error, setError] = useState('');
+  const [loadingLabel, setLoadingLabel] = useState("Place order");
+  const [error, setError] = useState("");
   const [itemsError, setItemsError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{ address?: string }>({});
 
-  const borderColor = useThemeColor({}, 'border');
-  const surface = useThemeColor({}, 'surface');
-  const surfaceAlt = useThemeColor({}, 'surfaceAlt');
-  const primary = useThemeColor({}, 'primary');
-  const primaryText = useThemeColor({}, 'primaryText');
-  const muted = useThemeColor({}, 'muted');
+  const primary = useThemeColor({}, "primary");
+  const primaryText = useThemeColor({}, "primaryText");
+  const borderColor = useThemeColor({}, "border");
+  const muted = useThemeColor({}, "muted");
+  const danger = useThemeColor({}, "danger");
 
-  const parsedItems = useMemo(() => parseCustomOrderLines(itemsText), [itemsText]);
+  const parsedItems = useMemo(
+    () => parseCustomOrderLines(itemsText),
+    [itemsText],
+  );
+  const itemsOverLimit = parsedItems.length > CUSTOM_ORDER_MAX_ITEMS;
+  const itemsInputHeight = useMemo(
+    () => getItemsInputHeight(itemsText.split("\n").length),
+    [itemsText],
+  );
+  const surfaceAlt = useThemeColor({}, "surfaceAlt");
 
   const handlePlaceOrder = async () => {
-    const addressError = validateRequired(address, 'Delivery address');
-    const itemValidationError = validateCustomOrderItems(parsedItems);
-    setFieldErrors(addressError ? { address: addressError } : {});
-    setItemsError(itemValidationError);
-    if (addressError || itemValidationError) return;
+    const validationErrors = validateCustomOrderForm(itemsText, address);
+    setItemsError(validationErrors.items ?? null);
+    setFieldErrors(
+      validationErrors.address ? { address: validationErrors.address } : {},
+    );
+    if (validationErrors.items || validationErrors.address) return;
 
-    setError('');
+    setError("");
     setLoading(true);
-    setLoadingLabel('Placing order...');
+    setLoadingLabel("Placing order...");
     try {
-      const order = await placeOrder({
-        kind: 'custom',
-        body: {
-          address: address.trim(),
-          customItems: parsedItems,
-          paymentMethod: 'cash_on_delivery',
-        },
-      }).unwrap();
+      const body = buildCustomOrderBody(itemsText, address);
+      const order = await placeOrder({ kind: "custom", body }).unwrap();
 
       await completeOrderPlacement(dispatch, order, {
         notify,
@@ -73,92 +93,147 @@ export default function CustomOrderScreen() {
         onProgress: setLoadingLabel,
       });
     } catch (err) {
-      const details = getApiErrorDetails(err, 'Could not place your custom order. Please try again.');
+      const details = getApiErrorDetails(
+        err,
+        "Could not place your custom order. Please try again.",
+      );
       setError(details.message);
     } finally {
       setLoading(false);
-      setLoadingLabel('Place order');
+      setLoadingLabel("Place order");
     }
   };
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
       <KeyboardAwareScroll contentContainerStyle={styles.container}>
         <ScreenHeader title="Non-listed items" />
         <ThemedText style={{ color: muted }}>
-          Type what you need — each new line is one item. Payment is cash on delivery only; the store
-          will confirm the price when your order is processed.
+          Type what you need — each new line is one item. Payment is cash on
+          delivery only; the store will confirm the price when your order is
+          processed.
         </ThemedText>
 
-        <ThemedView style={[styles.card, { borderColor, backgroundColor: surface }]}>
-          <ThemedText type="defaultSemiBold">Your list</ThemedText>
-          <ThemedText style={{ color: muted, fontSize: 13 }}>
-            Example: one item per line (bullets are optional)
-          </ThemedText>
-          <ValidatingTextInput
-            label="Items to order"
-            placeholder={'Organic honey 500g\nFresh coriander bunch\nBrand X detergent'}
-            value={itemsText}
-            onChangeText={(text) => {
-              setItemsText(text);
-              if (itemsError) setItemsError(null);
-            }}
-            maxLength={FIELD_LIMITS.customOrderNotes}
-            multiline
-            error={itemsError ?? undefined}
-          />
+        <SurfaceCard
+          subtitle={`One item per line · ${CUSTOM_ORDER_MIN_ITEM_LENGTH}–${FIELD_LIMITS.customOrderLine} characters each · up to ${CUSTOM_ORDER_MAX_ITEMS} items`}
+        >
+          <View style={styles.listHeader}>
+            <ThemedText type="defaultSemiBold">Your list</ThemedText>
+            {parsedItems.length > 0 ? (
+              <View
+                style={[
+                  styles.countBadge,
+                  {
+                    backgroundColor: itemsOverLimit
+                      ? `${danger}18`
+                      : `${primary}18`,
+                    borderColor: itemsOverLimit ? danger : primary,
+                  },
+                ]}
+              >
+                <ThemedText
+                  style={[
+                    styles.countBadgeText,
+                    { color: itemsOverLimit ? danger : primary },
+                  ]}
+                >
+                  {parsedItems.length}/{CUSTOM_ORDER_MAX_ITEMS}
+                </ThemedText>
+              </View>
+            ) : null}
+          </View>
+
+          <View
+            style={[
+              styles.itemsInputWrap,
+              { borderColor, backgroundColor: surfaceAlt },
+            ]}
+          >
+            <ValidatingTextInput
+              placeholder={
+                "Organic honey 500g\nFresh coriander bunch\nBasmati rice 5kg\nDetergent powder\nMilk 1L"
+              }
+              value={itemsText}
+              onChangeText={(text) => {
+                setItemsText(text);
+                if (itemsError) setItemsError(null);
+              }}
+              maxLength={FIELD_LIMITS.customOrderNotes}
+              multiline
+              minHeight={itemsInputHeight}
+              maxHeight={ITEMS_INPUT_MAX_HEIGHT}
+              inputStyle={styles.itemsInput}
+              error={itemsError ?? undefined}
+            />
+          </View>
+
           {parsedItems.length > 0 ? (
-            <ThemedView style={[styles.previewCard, { borderColor, backgroundColor: surfaceAlt }]}>
-              <ThemedText type="defaultSemiBold" style={styles.previewTitle}>
+            <SurfaceCard nested style={{ backgroundColor: surfaceAlt }}>
+              <ThemedText
+                type="defaultSemiBold"
+                style={[
+                  styles.previewTitle,
+                  itemsOverLimit ? { color: danger } : undefined,
+                ]}
+              >
                 Preview ({parsedItems.length}/{CUSTOM_ORDER_MAX_ITEMS})
               </ThemedText>
-              <OrderItemsList labels={parsedItems} />
-            </ThemedView>
+              {itemsOverLimit ? (
+                <ThemedText style={{ color: danger, fontSize: 13 }}>
+                  Remove {parsedItems.length - CUSTOM_ORDER_MAX_ITEMS} item
+                  {parsedItems.length - CUSTOM_ORDER_MAX_ITEMS === 1
+                    ? ""
+                    : "s"}{" "}
+                  to continue.
+                </ThemedText>
+              ) : null}
+              <OrderItemsList
+                labels={parsedItems.slice(0, CUSTOM_ORDER_MAX_ITEMS)}
+              />
+            </SurfaceCard>
           ) : null}
-        </ThemedView>
+        </SurfaceCard>
 
-        <ThemedView style={[styles.card, { borderColor, backgroundColor: surface }]}>
-          <ThemedText type="defaultSemiBold">Payment</ThemedText>
-          <ThemedView style={[styles.codChip, { borderColor: primary, backgroundColor: primary }]}>
-            <ThemedText style={{ color: primaryText, fontWeight: '700' }}>Cash on Delivery</ThemedText>
+        <SurfaceCard title="Payment">
+          <ThemedView
+            style={[
+              styles.codChip,
+              { borderColor: primary, backgroundColor: primary },
+            ]}
+          >
+            <ThemedText style={{ color: primaryText, fontWeight: "700" }}>
+              Cash on Delivery
+            </ThemedText>
           </ThemedView>
           <ThemedText style={{ color: muted, fontSize: 13 }}>
-            No online payment or bank transfer for custom requests. Pay when your order is delivered.
+            No online payment or bank transfer for custom requests. Pay when
+            your order is delivered.
           </ThemedText>
-        </ThemedView>
+        </SurfaceCard>
 
-        <ThemedView style={[styles.card, { borderColor, backgroundColor: surface }]}>
-          <ValidatingTextInput
-            label="Delivery address"
-            placeholder="House 12, Street 4, City"
+        <SurfaceCard>
+          <DeliveryAddressField
             value={address}
-            onChangeText={(text) => {
-              setAddress(text);
-              if (fieldErrors.address) {
-                setFieldErrors({});
-              }
-            }}
-            maxLength={FIELD_LIMITS.address}
-            multiline
+            onChange={setAddress}
             error={fieldErrors.address}
+            onClearError={() => setFieldErrors({})}
+            onLocationError={setError}
+            onLocationSuccess={() => setError("")}
+            hint="Include house number, street, and city so delivery can reach you."
           />
-        </ThemedView>
+        </SurfaceCard>
 
         <ApiErrorBanner title="Custom order" message={error || null} />
 
-        <Pressable
-          style={[
-            styles.primaryButton,
-            { backgroundColor: primary },
-            (loading || sessionBusy) && styles.buttonDisabled,
-          ]}
+        <ThemedButton
+          variant="primary"
+          size="large"
+          label="Place custom order"
+          loading={loading}
+          loadingLabel={loadingLabel}
+          disabled={sessionBusy || itemsOverLimit}
           onPress={handlePlaceOrder}
-          disabled={loading || sessionBusy}>
-          {loading ? <ActivityIndicator color={primaryText} /> : null}
-          <ThemedText style={[styles.primaryButtonText, { color: primaryText }]}>
-            {loading ? loadingLabel : 'Place custom order'}
-          </ThemedText>
-        </Pressable>
+        />
       </KeyboardAwareScroll>
     </SafeAreaView>
   );
@@ -171,45 +246,49 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 40,
     gap: 12,
-    width: '100%',
+    width: "100%",
     maxWidth: 480,
-    alignSelf: 'center',
-  },
-  card: {
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    gap: 10,
-  },
-  previewCard: {
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 10,
-    gap: 6,
+    alignSelf: "center",
   },
   previewTitle: {
     marginBottom: 2,
   },
+  listHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+  countBadge: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  countBadgeText: {
+    fontSize: 12,
+    fontWeight: "700",
+    fontVariant: ["tabular-nums"],
+  },
+  itemsInputWrap: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 4,
+    marginTop: -4,
+  },
+  itemsInput: {
+    borderWidth: 0,
+    backgroundColor: "transparent",
+    fontSize: 16,
+    lineHeight: ITEMS_INPUT_LINE_HEIGHT,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+  },
   codChip: {
-    alignSelf: 'flex-start',
+    alignSelf: "flex-start",
     borderWidth: 1,
     borderRadius: 999,
     paddingHorizontal: 14,
     paddingVertical: 8,
-  },
-  primaryButton: {
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 4,
-  },
-  primaryButtonText: {
-    fontSize: 17,
-    fontWeight: '700',
-  },
-  buttonDisabled: {
-    opacity: 0.6,
   },
 });

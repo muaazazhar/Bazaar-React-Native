@@ -7,11 +7,7 @@ export default function EditProfileRoute() {
   const user = useAppSelector((state) => state.auth.user);
   const hydrated = useAppSelector((state) => state.auth.hydrated);
 
-  if (!hydrated) {
-    return null;
-  }
-
-  if (!user) {
+  if (hydrated && !user) {
     return <Redirect href="/login" />;
   }
 

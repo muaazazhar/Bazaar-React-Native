@@ -1,12 +1,14 @@
 import { router } from 'expo-router';
-import { Pressable, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ApiErrorBanner } from '@/components/api-feedback';
+import { OrderListSkeleton } from '@/components/catalog-skeletons';
 import { QueryLoadBody } from '@/components/query-load-body';
 import { BankTransferDetailsCard } from '@/components/bank-transfer-details-card';
 import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
 import { ScreenHeader } from '@/components/screen-header';
+import { ThemedButton } from '@/components/themed-button';
 import { ThemedText } from '@/components/themed-text';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useGetStoreSettingsQuery } from '@/store/api/storeSettingsApi';
@@ -30,9 +32,6 @@ export default function BankTransferScreen({ orderId, orderNo, total }: BankTran
     refetch,
   } = useGetStoreSettingsQuery();
 
-  const borderColor = useThemeColor({}, 'border');
-  const primary = useThemeColor({}, 'primary');
-  const primaryText = useThemeColor({}, 'primaryText');
   const muted = useThemeColor({}, 'muted');
 
   const parsedTotal = total != null ? Number(total) : undefined;
@@ -62,7 +61,10 @@ export default function BankTransferScreen({ orderId, orderNo, total }: BankTran
           onRetry={refetch}
         />
 
-        <QueryLoadBody isLoading={showSpinner} hasError={Boolean(errorMessage)}>
+        <QueryLoadBody
+          isLoading={showSpinner}
+          hasError={Boolean(errorMessage)}
+          skeleton={<OrderListSkeleton count={1} />}>
           {bankReady && storeSettings ? (
             <BankTransferDetailsCard settings={storeSettings} orderNo={orderNo} amount={amount} />
           ) : null}
@@ -75,21 +77,19 @@ export default function BankTransferScreen({ orderId, orderNo, total }: BankTran
         ) : null}
 
         {orderId ? (
-          <Pressable
-            style={[styles.button, { backgroundColor: primary }]}
+          <ThemedButton
+            variant="primary"
+            label="View order receipt"
             onPress={() =>
               router.push({
                 pathname: '/receipt',
                 params: { orderId, paymentMethod: 'bank_transfer' },
               })
-            }>
-            <ThemedText style={[styles.buttonText, { color: primaryText }]}>View order receipt</ThemedText>
-          </Pressable>
+            }
+          />
         ) : null}
 
-        <Pressable style={[styles.secondaryButton, { borderColor }]} onPress={() => router.push('/(tabs)/orders')}>
-          <ThemedText>Go to My Orders</ThemedText>
-        </Pressable>
+        <ThemedButton variant="secondary" label="Go to My Orders" onPress={() => router.push('/(tabs)/orders')} />
       </KeyboardAwareScroll>
     </SafeAreaView>
   );
@@ -105,19 +105,5 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 720,
     alignSelf: 'center',
-  },
-  button: {
-    borderRadius: 10,
-    padding: 12,
-    alignItems: 'center',
-  },
-  buttonText: {
-    fontWeight: '700',
-  },
-  secondaryButton: {
-    borderWidth: 1,
-    borderRadius: 10,
-    padding: 12,
-    alignItems: 'center',
   },
 });
