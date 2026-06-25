@@ -16,25 +16,41 @@ export type PlaceOrderJsonBody = {
   paymentReference?: string;
 };
 
+export type PlaceCustomOrderBody = {
+  address: string;
+  customItems: string[];
+  paymentMethod: 'cash_on_delivery';
+};
+
 export type PlaceOrderRequest =
   | { kind: 'json'; body: PlaceOrderJsonBody }
-  | { kind: 'formData'; formData: FormData };
+  | { kind: 'formData'; formData: FormData }
+  | { kind: 'custom'; body: PlaceCustomOrderBody };
 
 export const ordersApi = baseApi.injectEndpoints({
   endpoints: (builder) => ({
     placeOrder: builder.mutation<Order, PlaceOrderRequest>({
-      query: (request) =>
-        request.kind === 'formData'
-          ? {
-              url: '/api/orders',
-              method: 'POST',
-              body: request.formData,
-            }
-          : {
-              url: '/api/orders',
-              method: 'POST',
-              body: request.body,
-            },
+      query: (request) => {
+        if (request.kind === 'formData') {
+          return {
+            url: '/api/orders',
+            method: 'POST',
+            body: request.formData,
+          };
+        }
+        if (request.kind === 'custom') {
+          return {
+            url: '/api/orders/custom',
+            method: 'POST',
+            body: request.body,
+          };
+        }
+        return {
+          url: '/api/orders',
+          method: 'POST',
+          body: request.body,
+        };
+      },
       transformResponse: (response: unknown) => normalizeOrder(response),
       invalidatesTags: [{ type: 'Order', id: 'LIST' }],
     }),

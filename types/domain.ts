@@ -35,7 +35,11 @@ export type OrderItem = {
   name: string;
   price: number;
   quantity: number;
+  /** True when the line is a free-text custom request (no catalog product). */
+  isCustom?: boolean;
 };
+
+export type OrderType = 'catalog' | 'custom';
 
 export type PaymentMethod = 'credit_debit_card' | 'cash_on_delivery' | 'bank_transfer' | 'wallet';
 export type WalletProvider = 'easypaisa' | 'jazzcash';
@@ -44,6 +48,7 @@ export type Order = {
   id: string | number;
   /** Customer-facing order number from the API (`orderNo` / `order_no`). Never show `id` in UI. */
   orderNo: string;
+  orderType?: OrderType;
   status: string;
   address: string;
   total: number;
@@ -52,7 +57,7 @@ export type Order = {
   paymentScreenshotUrl?: string | null;
   createdAt?: string;
   userId?: string;
-  user?: Pick<User, 'id' | 'email' | 'username'>;
+  user?: Pick<User, 'id' | 'email' | 'username' | 'phone'>;
   items: OrderItem[];
   paymentMethod?: PaymentMethod;
   walletProvider?: WalletProvider | null;

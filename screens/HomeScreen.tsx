@@ -105,6 +105,15 @@ export default function HomeScreen() {
           <CatalogProductList products={popularProducts} />
         </QueryLoadBody>
 
+        <Pressable
+          style={[styles.secondaryButton, { borderColor }]}
+          onPress={() => router.push('/custom-order')}>
+          <ThemedText type="defaultSemiBold">Order non-listed items</ThemedText>
+          <ThemedText style={{ color: muted, fontSize: 13, marginTop: 4 }}>
+            Request products not in the catalog — cash on delivery only.
+          </ThemedText>
+        </Pressable>
+
         <Pressable style={[styles.primaryButton, { backgroundColor: primary }]} onPress={() => router.push('/(tabs)/cart')}>
           <ThemedText style={[styles.primaryButtonText, { color: primaryText }]}>Go to cart</ThemedText>
         </Pressable>
@@ -158,6 +167,12 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     padding: 12,
     alignItems: 'center',
+  },
+  secondaryButton: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    gap: 2,
   },
   primaryButtonText: {
     fontWeight: '700',

@@ -14,6 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ApiErrorBanner } from '@/components/api-feedback';
+import { OrderItemsList } from '@/components/order-items-list';
 import { useNotification } from '@/context/NotificationContext';
 import { ScreenHeader } from '@/components/screen-header';
 import { ThemedText } from '@/components/themed-text';
@@ -30,10 +31,12 @@ import {
   orderStatusUpdateBusyMessage,
 } from '@/utils/notificationMessages';
 import {
+  CUSTOM_ORDER_BADGE,
   formatOrderHeading,
   formatOrderStatus,
   formatPaymentMethod,
   getOrderCustomerLabel,
+  getOrderListMeta,
   isTerminalOrderStatus,
   normalizeOrderStatusKey,
 } from '@/utils/orderDisplay';
@@ -172,9 +175,13 @@ export default function AdminOrdersScreen() {
           const terminal = isTerminalOrderStatus(order.status);
           const actionsDisabled = busy || terminal;
           const statusKey = normalizeOrderStatusKey(order.status);
+          const { isCustom, itemLabels, totalLabel } = getOrderListMeta(order);
           return (
             <ThemedView key={String(order.id)} style={[styles.card, { borderColor, backgroundColor: surface }]}>
               <ThemedText type="defaultSemiBold">{formatOrderHeading(order)}</ThemedText>
+              {isCustom ? (
+                <ThemedText style={{ color: muted, fontSize: 13 }}>{CUSTOM_ORDER_BADGE}</ThemedText>
+              ) : null}
               <ThemedText>Customer: {getOrderCustomerLabel(order)}</ThemedText>
               <ThemedText>
                 Status: {formatOrderStatus(order.status)}
@@ -186,7 +193,8 @@ export default function AdminOrdersScreen() {
                 Payment: {formatPaymentMethod(order.paymentMethod, order.walletProvider)}
               </ThemedText>
               <ThemedText>Address: {order.address}</ThemedText>
-              <ThemedText>Total: Rs {order.total.toLocaleString()}</ThemedText>
+              <ThemedText>Total: {totalLabel}</ThemedText>
+              <OrderItemsList title={isCustom ? 'Requested items' : 'Items'} labels={itemLabels} />
               {order.status.toLowerCase() === 'cancelled' && order.cancellationReason ? (
                 <ThemedText style={{ color: muted }}>
                   Cancellation reason: {order.cancellationReason}

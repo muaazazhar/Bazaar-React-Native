@@ -1,8 +1,9 @@
 import { router } from 'expo-router';
-import { Pressable, ScrollView, StyleSheet } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ApiErrorBanner } from '@/components/api-feedback';
+import { OrderItemsList } from '@/components/order-items-list';
 import { QueryLoadBody } from '@/components/query-load-body';
 import { ScreenHeader } from '@/components/screen-header';
 import { ThemedText } from '@/components/themed-text';
@@ -11,9 +12,12 @@ import { useThemeColor } from '@/hooks/use-theme-color';
 import { useQueryLoadState } from '@/hooks/use-query-load-state';
 import { useGetMyOrdersQuery } from '@/store/api/ordersApi';
 import {
+  CUSTOM_ORDER_BADGE,
+  buildReceiptRouteParams,
   formatOrderHeading,
   formatOrderStatus,
   formatPaymentMethod,
+  getOrderListMeta,
   orderNeedsBankTransferPayment,
 } from '@/utils/orderDisplay';
 
@@ -48,41 +52,62 @@ export default function OrdersScreen() {
         {showContent && orders.length === 0 ? <ThemedText>No orders yet.</ThemedText> : null}
         {showContent
           ? orders.map((order) => {
-          const showBankDetails = orderNeedsBankTransferPayment(order);
-          return (
-            <ThemedView key={String(order.id)} style={[styles.orderCard, { borderColor, backgroundColor: surface }]}>
-              <ThemedText type="defaultSemiBold">{formatOrderHeading(order)}</ThemedText>
-              <ThemedText>Status: {formatOrderStatus(order.status)}</ThemedText>
-              <ThemedText>Payment: {formatPaymentMethod(order.paymentMethod, order.walletProvider)}</ThemedText>
-              <ThemedText>Total: Rs {order.total.toLocaleString()}</ThemedText>
-              <ThemedText>Address: {order.address}</ThemedText>
-              <ThemedText>Items: {order.items?.length ?? 0}</ThemedText>
-              {order.status.toLowerCase() === 'cancelled' && order.cancellationReason ? (
-                <ThemedText style={{ color: muted }}>
-                  Cancellation reason: {order.cancellationReason}
-                </ThemedText>
-              ) : null}
-              {showBankDetails ? (
-                <Pressable
-                  style={[styles.bankDetailsButton, { backgroundColor: primary }]}
-                  onPress={() =>
-                    router.push({
-                      pathname: '/bank-transfer',
-                      params: {
-                        orderId: String(order.id),
-                        orderNo: order.orderNo,
-                        total: String(order.total),
-                      },
-                    })
-                  }>
-                  <ThemedText style={[styles.bankDetailsButtonText, { color: primaryText }]}>
-                    View bank details to pay
-                  </ThemedText>
-                </Pressable>
-              ) : null}
-            </ThemedView>
-          );
-        })
+              const { isCustom, itemLabels, totalLabel } = getOrderListMeta(order);
+              const showBankDetails = orderNeedsBankTransferPayment(order);
+              return (
+                <ThemedView
+                  key={String(order.id)}
+                  style={[styles.orderCard, { borderColor, backgroundColor: surface }]}>
+                  <ThemedText type="defaultSemiBold">{formatOrderHeading(order)}</ThemedText>
+                  {isCustom ? (
+                    <ThemedText style={{ color: muted, fontSize: 13 }}>{CUSTOM_ORDER_BADGE}</ThemedText>
+                  ) : null}
+                  <ThemedText>Status: {formatOrderStatus(order.status)}</ThemedText>
+                  <ThemedText>Payment: {formatPaymentMethod(order.paymentMethod, order.walletProvider)}</ThemedText>
+                  <ThemedText>Total: {totalLabel}</ThemedText>
+                  <ThemedText>Address: {order.address}</ThemedText>
+                  <OrderItemsList title="Items" labels={itemLabels} />
+                  {itemLabels.length === 0 ? (
+                    <ThemedText>Items: {order.items?.length ?? 0}</ThemedText>
+                  ) : null}
+                  {order.status.toLowerCase() === 'cancelled' && order.cancellationReason ? (
+                    <ThemedText style={{ color: muted }}>
+                      Cancellation reason: {order.cancellationReason}
+                    </ThemedText>
+                  ) : null}
+                  <View style={styles.actionsRow}>
+                    <Pressable
+                      style={[styles.actionButton, { borderColor }]}
+                      onPress={() =>
+                        router.push({
+                          pathname: '/receipt',
+                          params: buildReceiptRouteParams(order),
+                        })
+                      }>
+                      <ThemedText>View receipt</ThemedText>
+                    </Pressable>
+                    {showBankDetails ? (
+                      <Pressable
+                        style={[styles.actionButton, styles.actionButtonPrimary, { backgroundColor: primary }]}
+                        onPress={() =>
+                          router.push({
+                            pathname: '/bank-transfer',
+                            params: {
+                              orderId: String(order.id),
+                              orderNo: order.orderNo,
+                              total: String(order.total),
+                            },
+                          })
+                        }>
+                        <ThemedText style={[styles.actionButtonPrimaryText, { color: primaryText }]}>
+                          Bank details
+                        </ThemedText>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                </ThemedView>
+              );
+            })
           : null}
       </ScrollView>
     </SafeAreaView>
@@ -113,14 +138,23 @@ const styles = StyleSheet.create({
     padding: 12,
     gap: 6,
   },
-  bankDetailsButton: {
+  actionsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
     marginTop: 8,
+  },
+  actionButton: {
+    borderWidth: 1,
     borderRadius: 8,
     paddingVertical: 10,
     paddingHorizontal: 12,
     alignItems: 'center',
   },
-  bankDetailsButtonText: {
+  actionButtonPrimary: {
+    borderWidth: 0,
+  },
+  actionButtonPrimaryText: {
     fontWeight: '700',
     fontSize: 14,
   },

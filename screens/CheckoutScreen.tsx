@@ -15,14 +15,14 @@ import { FIELD_LIMITS, validateRequired } from "@/constants/fieldLimits";
 import { getApiErrorDetails, logApiError } from "@/utils/apiError";
 import { getImagePart, pickImageFromLibrary } from "@/utils/imageUpload";
 import { orderPlacedMessage } from "@/utils/notificationMessages";
-import { buildOrderItemsFromCart } from "@/utils/orderItems";
+import { completeOrderPlacement } from "@/utils/orderPlacement";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { useCart } from "@/context/CartContext";
 import { useThemeColor } from "@/hooks/use-theme-color";
 import { usePlaceOrderMutation, type PlaceOrderRequest } from "@/store/api/ordersApi";
 import { useAppDispatch } from "@/store/hooks";
-import { queueReceiptForOrder } from "@/utils/receiptSession";
+import { buildOrderItemsFromCart } from "@/utils/orderItems";
 import { useSessionBusy } from "@/hooks/use-session-busy";
 import { useGetStoreSettingsQuery } from "@/store/api/storeSettingsApi";
 import type { PaymentMethod, WalletProvider } from "@/types/domain";
@@ -212,28 +212,12 @@ export default function CheckoutScreen() {
 
       const order = await placeOrder(request).unwrap();
 
-      setLoadingLabel("Generating receipt...");
-      const receiptWork = queueReceiptForOrder(dispatch, order.id);
-      try {
-        await receiptWork;
-      } catch {
-        // Receipt may still be created; user can open from My Orders.
-      }
-
-      clearCart();
-      notify(orderPlacedMessage(order.orderNo));
-      if (paymentMethod === "bank_transfer") {
-        router.replace({
-          pathname: "/bank-transfer",
-          params: {
-            orderId: String(order.id),
-            orderNo: order.orderNo,
-            total: String(order.total),
-          },
-        });
-      } else {
-        router.replace({ pathname: "/receipt", params: { orderId: String(order.id) } });
-      }
+      await completeOrderPlacement(dispatch, order, {
+        notify,
+        notification: orderPlacedMessage(order.orderNo),
+        onBeforeNavigate: clearCart,
+        onProgress: setLoadingLabel,
+      });
     } catch (err) {
       logApiError("POST /api/orders", err);
       const details = getApiErrorDetails(err, "Could not place order. Please try again.");

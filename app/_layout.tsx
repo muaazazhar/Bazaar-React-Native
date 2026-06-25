@@ -51,6 +51,7 @@ function RootNavigator() {
         <Stack.Screen name="reset-password" options={{ headerShown: false }} />
         <Stack.Screen name="edit-profile" options={{ headerShown: false }} />
         <Stack.Screen name="change-password" options={{ headerShown: false }} />
+        <Stack.Screen name="custom-order" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="admin" options={{ headerShown: false }} />
         <Stack.Screen name="admin-products" options={{ headerShown: false }} />

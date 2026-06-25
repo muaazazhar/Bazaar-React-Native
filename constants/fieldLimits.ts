@@ -16,6 +16,8 @@ export const FIELD_LIMITS = {
   phone: 20,
   password: 128,
   verificationCode: 6,
+  customOrderNotes: 4000,
+  customOrderLine: 200,
 } as const;
 
 export const MIN_PASSWORD_LENGTH = 8;

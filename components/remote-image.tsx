@@ -1,5 +1,5 @@
-import { Image } from 'expo-image';
-import { useState } from 'react';
+import { Image } from "expo-image";
+import { useState } from "react";
 import {
   ActivityIndicator,
   ImageSourcePropType,
@@ -7,14 +7,14 @@ import {
   View,
   type ImageStyle,
   type StyleProp,
-} from 'react-native';
+} from "react-native";
 
-import { useThemeColor } from '@/hooks/use-theme-color';
+import { useThemeColor } from "@/hooks/use-theme-color";
 
 type RemoteImageProps = {
   uri?: string | null;
   style?: StyleProp<ImageStyle>;
-  contentFit?: 'cover' | 'contain' | 'fill';
+  contentFit?: "cover" | "contain" | "fill";
   fallbackSource?: ImageSourcePropType;
   recyclingKey?: string;
 };
@@ -22,12 +22,12 @@ type RemoteImageProps = {
 export function RemoteImage({
   uri,
   style,
-  contentFit = 'cover',
+  contentFit = "cover",
   fallbackSource,
   recyclingKey,
 }: RemoteImageProps) {
-  const surfaceAlt = useThemeColor({}, 'surfaceAlt');
-  const muted = useThemeColor({}, 'muted');
+  const surfaceAlt = useThemeColor({}, "surfaceAlt");
+  const muted = useThemeColor({}, "muted");
   const [loading, setLoading] = useState(Boolean(uri));
   const [failed, setFailed] = useState(false);
 
@@ -35,7 +35,9 @@ export function RemoteImage({
     if (!fallbackSource) {
       return null;
     }
-    return <Image source={fallbackSource} style={style} contentFit={contentFit} />;
+    return (
+      <Image source={fallbackSource} style={style} contentFit={contentFit} />
+    );
   }
 
   const source = failed && fallbackSource ? fallbackSource : { uri };
@@ -70,11 +72,11 @@ export function RemoteImage({
 
 const styles = StyleSheet.create({
   wrapper: {
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   placeholder: {
     ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

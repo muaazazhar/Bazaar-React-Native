@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ApiErrorBanner } from '@/components/api-feedback';
 import { KeyboardAwareScroll } from '@/components/keyboard-aware-scroll';
-import { formatOrderHeading } from '@/utils/orderDisplay';
+import { OrderItemsList } from '@/components/order-items-list';
 import { ScreenHeader } from '@/components/screen-header';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -13,13 +13,22 @@ import { useThemeColor } from '@/hooks/use-theme-color';
 import { useGetReceiptQuery } from '@/store/api/ordersApi';
 import { useAppSelector } from '@/store/hooks';
 import { useQueryLoadState } from '@/hooks/use-query-load-state';
+import { CUSTOM_ORDER_BADGE, formatOrderHeading } from '@/utils/orderDisplay';
+import {
+  formatReceiptPaymentMethod,
+  formatReceiptStatus,
+  formatReceiptTotalLabel,
+  getReceiptItemLabels,
+  isCustomReceipt,
+} from '@/utils/receipt';
 
 type ReceiptScreenProps = {
   orderId: string;
   paymentMethod?: string;
+  orderType?: string;
 };
 
-export default function ReceiptScreen({ orderId, paymentMethod }: ReceiptScreenProps) {
+export default function ReceiptScreen({ orderId, paymentMethod, orderType }: ReceiptScreenProps) {
   const user = useAppSelector((state) => state.auth.user);
   const token = useAppSelector((state) => state.auth.token);
   const sessionBusy = useSessionBusy();
@@ -42,6 +51,7 @@ export default function ReceiptScreen({ orderId, paymentMethod }: ReceiptScreenP
   const muted = useThemeColor({}, 'muted');
 
   const isBankTransfer = paymentMethod === 'bank_transfer';
+  const isCustom = orderType === 'custom' || Boolean(data && isCustomReceipt(data));
 
   if (!canLoadReceipt) {
     return (
@@ -57,12 +67,24 @@ export default function ReceiptScreen({ orderId, paymentMethod }: ReceiptScreenP
     );
   }
 
+  const itemLabels = data ? getReceiptItemLabels(data) : [];
+  const paymentLabel = data
+    ? formatReceiptPaymentMethod(data)
+    : isCustom
+      ? 'Cash on Delivery'
+      : undefined;
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       <KeyboardAwareScroll contentContainerStyle={styles.container}>
         <ScreenHeader title="Receipt" />
         <ThemedText type="subtitle">Order Successful</ThemedText>
-        {isBankTransfer ? (
+        {isCustom ? (
+          <ThemedText style={{ color: muted }}>
+            {CUSTOM_ORDER_BADGE}. The store will confirm prices before delivery.
+          </ThemedText>
+        ) : null}
+        {isBankTransfer && !isCustom ? (
           <ThemedText style={{ color: muted }}>
             Complete your bank transfer using the store account details. You can open them again anytime from My
             Orders.
@@ -79,13 +101,21 @@ export default function ReceiptScreen({ orderId, paymentMethod }: ReceiptScreenP
           <ThemedView style={[styles.card, { borderColor }]}>
             <ThemedText type="defaultSemiBold">Receipt: {data.receiptNumber}</ThemedText>
             <ThemedText>{formatOrderHeading({ orderNo: data.orderNo })}</ThemedText>
-            <ThemedText>Total: Rs {data.totalAmount.toLocaleString()}</ThemedText>
-            <ThemedText>Status: {data.status}</ThemedText>
+            {isCustom ? (
+              <ThemedText style={{ color: muted, fontSize: 13 }}>{CUSTOM_ORDER_BADGE}</ThemedText>
+            ) : null}
+            <ThemedText>Status: {formatReceiptStatus(data.status)}</ThemedText>
+            {paymentLabel ? <ThemedText>Payment: {paymentLabel}</ThemedText> : null}
+            <ThemedText>Total: {formatReceiptTotalLabel(data)}</ThemedText>
             <ThemedText>Address: {data.deliveryAddress}</ThemedText>
+            <OrderItemsList
+              title={isCustom ? 'Requested items' : 'Items'}
+              labels={itemLabels}
+            />
           </ThemedView>
         ) : null}
 
-        {isBankTransfer && orderId ? (
+        {isBankTransfer && !isCustom && orderId ? (
           <Pressable
             style={[styles.button, { backgroundColor: primary }]}
             onPress={() =>
